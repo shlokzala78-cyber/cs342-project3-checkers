@@ -5,213 +5,307 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 
-public class GuiClient extends Application{
+public class GuiClient extends Application {
 	Client clientConnection;
 	String username;
 
+	// Scenes
 	Scene loginScene;
-	Scene mainScene;
+	Scene waitingScene;
+	Scene gameScene;
 
-	// Login Screen UI
+	// UI Elements
+	TextField ipInput;
 	TextField usernameInput;
 	Label loginStatus;
-
-	// Main Screen UI
-	ListView<String> messageList;
 	ListView<String> usersList;
-	ComboBox<String> recipientBox;
-	TextField messageInput;
-	TextField groupInput;
-	
-	
+
+	// Game Specific UI Elements
+	GridPane checkerBoard;
+	ListView<String> gameChat;
+	TextField chatInput;
+	Label turnIndicator;
+	Label capturedInfo;
+
+	// Board State
+	private StackPane[][] boardSquares = new StackPane[8][8];
+	private int selectedRow = -1;
+	private int selectedCol = -1;
+
 	public static void main(String[] args) {
 		launch(args);
 	}
 
 	@Override
 	public void start(Stage primaryStage) throws Exception {
-		// Initialize network client
 		clientConnection = new Client(data -> {
 			Platform.runLater(() -> handleIncomingMessage(data, primaryStage));
 		});
 		clientConnection.start();
 
-		// Build the scenes using helper methods
 		loginScene = createLoginGui();
-		mainScene = createMainGui();
+		waitingScene = createWaitingGui();
+		gameScene = createGameGui();
 
-		// Setup primary stage
 		primaryStage.setOnCloseRequest(t -> {
 			Platform.exit();
 			System.exit(0);
 		});
 
 		primaryStage.setScene(loginScene);
-		primaryStage.setTitle("Client Chat App - Login");
+		primaryStage.setTitle("Checkers - Login");
 		primaryStage.show();
 	}
 
+	// --- SCENE 1: LOGIN SCREEN ---
 	private Scene createLoginGui() {
-		VBox loginBox = new VBox(10);
+		VBox loginBox = new VBox(15);
+		loginBox.setAlignment(Pos.CENTER);
 		loginBox.setPadding(new Insets(20));
 
+		Label title = new Label("Checkers Login");
+		title.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
+
+		ipInput = new TextField("127.0.0.1");
+		ipInput.setPromptText("Server IP Address");
+
 		usernameInput = new TextField();
-		usernameInput.setPromptText("Enter a unique username...");
+		usernameInput.setPromptText("Username");
 
-		Button loginBtn = new Button("Join Server");
-		loginStatus = new Label();
-		loginStatus.setStyle("-fx-text-fill: blue;"); // Login Screen color blue
+		Button connectBtn = new Button("Connect to Server");
+		loginStatus = new Label("Status: Disconnected");
 
-		loginBtn.setOnAction(e -> {
+		connectBtn.setOnAction(e -> {
 			Message req = new Message();
 			req.type = Message.MessageType.CONNECT;
 			req.sender = usernameInput.getText();
 			clientConnection.send(req);
 		});
 
-		loginBox.getChildren().addAll(new Label("Username:"), usernameInput, loginBtn, loginStatus);
+		loginBox.getChildren().addAll(title, new Label("Server IP Address:"), ipInput, new Label("Username:"), usernameInput, connectBtn, loginStatus);
+		loginBox.setStyle("-fx-background-color: cyan;");
 
-		// Retaining your original styling preference for the background
-		loginBox.setStyle("-fx-background-color: lightblue; -fx-font-family: 'serif';"); // BG color lightblue
-
-		return new Scene(loginBox, 300, 200);
+		return new Scene(loginBox, 400, 300);
 	}
 
-	private Scene createMainGui() {
-		messageList = new ListView<>();
+	// --- SCENE 2: WAITING / MATCHMAKING SCREEN ---
+	private Scene createWaitingGui() {
+		VBox waitingBox = new VBox(10);
+		waitingBox.setPadding(new Insets(20));
+
+		Label welcomeLabel = new Label("Online Players:");
 		usersList = new ListView<>();
 
-		recipientBox = new ComboBox<>();
-		recipientBox.getItems().add("All (Broadcast)");
-		recipientBox.getSelectionModel().selectFirst();
+		Button challengeBtn = new Button("Challenge Selected Player");
+		challengeBtn.setOnAction(e -> {
+			String selected = usersList.getSelectionModel().getSelectedItem();
+			if (selected != null) {
+				Message req = new Message();
+				req.type = Message.MessageType.CHALLENGE;
+				req.sender = username;
+				req.recipient = selected;
+				clientConnection.send(req);
+			}
+		});
 
-		messageInput = new TextField();
-		messageInput.setPromptText("Type your message...");
-		Button sendBtn = new Button("Send");
-		sendBtn.setOnAction(e -> sendMessage());
+		waitingBox.getChildren().addAll(welcomeLabel, usersList, challengeBtn);
+		waitingBox.setStyle("-fx-background-color: cyan;");
 
-		// Group creation controls
-		groupInput = new TextField();
-		groupInput.setPromptText("Group Name");
-		Button createGroupBtn = new Button("Create Group");
-		createGroupBtn.setOnAction(e -> createGroup());
-
-		// Layout construction
-		HBox sendBox = new HBox(10, recipientBox, messageInput, sendBtn);
-		HBox groupBox = new HBox(10, groupInput, createGroupBtn);
-
-		VBox leftPane = new VBox(10, new Label("Online Users & Groups:"), usersList, groupBox);
-		leftPane.setPrefWidth(200);
-
-		BorderPane mainLayout = new BorderPane();
-		mainLayout.setPadding(new Insets(10));
-		mainLayout.setLeft(leftPane);
-		mainLayout.setCenter(messageList);
-		mainLayout.setBottom(sendBox);
-		BorderPane.setMargin(messageList, new Insets(0, 10, 10, 10));
-
-		mainLayout.setStyle("-fx-font-family: 'serif';");
-
-		return new Scene(mainLayout, 700, 500);
+		return new Scene(waitingBox, 400, 400);
 	}
 
+	// --- SCENE 3: GAMEBOARD SCREEN ---
+	private Scene createGameGui() {
+		BorderPane gameLayout = new BorderPane();
+		gameLayout.setPadding(new Insets(10));
+		gameLayout.setStyle("-fx-background-color: cyan;");
 
-	// Handling and managing actions by clients
+		// Top: Status Info matching your wireframe
+		VBox topBox = new VBox(5);
+		capturedInfo = new Label("Captured Pieces: 0");
+		turnIndicator = new Label("Whose Turn: Waiting for Server...");
+		topBox.getChildren().addAll(capturedInfo, turnIndicator);
+		gameLayout.setTop(topBox);
+
+		// Center: The Checkerboard
+		checkerBoard = new GridPane();
+		checkerBoard.setStyle("-fx-border-color: black; -fx-border-width: 2;");
+		checkerBoard.setMaxSize(400, 400);
+
+		// Generate the 8x8 grid
+		for (int row = 0; row < 8; row++) {
+			for (int col = 0; col < 8; col++) {
+				StackPane square = new StackPane();
+				square.setPrefSize(50, 50);
+
+				// Alternate colors for standard checkerboard
+				if ((row + col) % 2 == 0) {
+					square.setStyle("-fx-background-color: #ffce9e;"); // Light square
+				} else {
+					square.setStyle("-fx-background-color: #d18b47;"); // Dark square
+				}
+
+				// Attach click listener for moving pieces
+				final int r = row;
+				final int c = col;
+				square.setOnMouseClicked(e -> handleSquareClick(r, c));
+
+				boardSquares[row][col] = square;
+				checkerBoard.add(square, col, row);
+			}
+		}
+		gameLayout.setCenter(checkerBoard);
+
+		// Right: Chat and Controls
+		VBox rightMenu = new VBox(10);
+		rightMenu.setPadding(new Insets(10));
+		rightMenu.setPrefWidth(200);
+
+		gameChat = new ListView<>();
+		chatInput = new TextField();
+		Button sendBtn = new Button("Send");
+		sendBtn.setOnAction(e -> sendChatMessage());
+		HBox chatControls = new HBox(5, chatInput, sendBtn);
+
+		Button drawBtn = new Button("Offer Draw");
+		Button quitBtn = new Button("Quit Game");
+
+		rightMenu.getChildren().addAll(new Label("Text Messaging"), gameChat, chatControls, drawBtn, quitBtn);
+		gameLayout.setRight(rightMenu);
+
+		return new Scene(gameLayout, 700, 500);
+	}
+
+	// --- CLIENT GAME LOGIC ---
+
+	// Populates the initial standard checkers setup
+	private void initializeBoard() {
+		for (int row = 0; row < 8; row++) {
+			for (int col = 0; col < 8; col++) {
+				boardSquares[row][col].getChildren().clear(); // Clear board
+
+				// Pieces only go on dark squares
+				if ((row + col) % 2 != 0) {
+					if (row < 3) {
+						addPieceToSquare(row, col, Color.BLACK); // Top player is Black
+					} else if (row > 4) {
+						addPieceToSquare(row, col, Color.RED);   // Bottom player is Red
+					}
+				}
+			}
+		}
+	}
+
+	private void addPieceToSquare(int row, int col, Color color) {
+		Circle piece = new Circle(20, color);
+		piece.setStroke(Color.BLACK); // Give pieces a border so they pop
+		piece.setStrokeWidth(2);
+		boardSquares[row][col].getChildren().add(piece);
+	}
+
+	// Handles the user clicking on the board
+	private void handleSquareClick(int row, int col) {
+		// First click: Select a square
+		if (selectedRow == -1 && selectedCol == -1) {
+			// Only allow selection if the square actually has a piece in it
+			if (!boardSquares[row][col].getChildren().isEmpty()) {
+				selectedRow = row;
+				selectedCol = col;
+				// Highlight the selected square in yellow
+				boardSquares[row][col].setStyle("-fx-background-color: yellow; -fx-border-color: red; -fx-border-width: 2;");
+			}
+		}
+		// Second click: Attempt a move
+		else {
+			// Send the requested move to the server for validation
+			Message moveMsg = new Message();
+			moveMsg.type = Message.MessageType.MOVE;
+			moveMsg.sender = username;
+			moveMsg.startRow = selectedRow;
+			moveMsg.startCol = selectedCol;
+			moveMsg.endRow = row;
+			moveMsg.endCol = col;
+
+			clientConnection.send(moveMsg);
+
+			// Reset selection visuals back to the dark wood color
+			boardSquares[selectedRow][selectedCol].setStyle("-fx-background-color: #d18b47;");
+			selectedRow = -1;
+			selectedCol = -1;
+		}
+	}
+
+	// --- NETWORK MESSAGE HANDLER ---
 	private void handleIncomingMessage(Message msg, Stage stage) {
 		switch (msg.type) {
 			case CONNECT_SUCCESS:
 				username = usernameInput.getText();
-				stage.setScene(mainScene);
-				stage.setTitle("Chat App - User: " + username);
+				stage.setScene(waitingScene);
+				stage.setTitle("Checkers - Waiting Room (" + username + ")");
 				break;
 
 			case CONNECT_FAIL:
-				loginStatus.setText("Username taken or invalid. Try again.");
+				loginStatus.setText("Username Error: Already in use!");
 				break;
 
-			case CLIENT_LIST: // Update ListView
+			case CLIENT_LIST:
 				usersList.getItems().clear();
-				recipientBox.getItems().clear();
-				recipientBox.getItems().add("All (Broadcast)");
-
-				usersList.getItems().addAll("--- USERS ---");
 				for (String u : msg.activeUsers) {
 					if (!u.equals(username)) {
 						usersList.getItems().add(u);
-						recipientBox.getItems().add(u);
 					}
 				}
-				usersList.getItems().addAll("--- GROUPS ---");
-				for (String g : msg.activeGroups) {
-					usersList.getItems().add(g);
-					recipientBox.getItems().add(g);
+				break;
+
+			case GAME_START:
+				stage.setScene(gameScene);
+				stage.setTitle("Checkers Game: " + username + " vs " + msg.sender);
+				initializeBoard(); // Put the pieces on the board!
+				turnIndicator.setText("Whose Turn: Red"); // Assuming Red goes first
+				break;
+
+			case CHAT:
+				gameChat.getItems().add(msg.sender + ": " + msg.content);
+				break;
+
+			case MOVE:
+				// SERVER CODE REQUIREMENT: The server has validated this move and broadcasted it back.
+				// We just visually move the piece from the start coordinates to the end coordinates.
+				if (!boardSquares[msg.startRow][msg.startCol].getChildren().isEmpty()) {
+					javafx.scene.Node piece = boardSquares[msg.startRow][msg.startCol].getChildren().remove(0);
+					boardSquares[msg.endRow][msg.endCol].getChildren().add(piece);
 				}
-				recipientBox.getSelectionModel().selectFirst();
-				break;
 
-			case BROADCAST: // Broadcast Message
-				messageList.getItems().add("[Broadcast] " + msg.sender + ": " + msg.content);
-				break;
-
-			case PRIVATE:
-				messageList.getItems().add("[Private] " + msg.sender + ": " + msg.content);
-				break;
-
-			case GROUP_MESSAGE: // Group Message
-				messageList.getItems().add("[Group: " + msg.recipient + "] " + msg.sender + ": " + msg.content);
+				// Note: If a piece was captured (jumped), the SERVER will need to send a separate
+				// command or a full board update to tell the client to remove the jumped piece.
 				break;
 		}
 	}
 
-	// Method to implement sendMessage action
-	private void sendMessage() {
-		String content = messageInput.getText();
+	private void sendChatMessage() {
+		String content = chatInput.getText();
 		if (content.trim().isEmpty()) return;
 
-		String recipient = recipientBox.getValue();
 		Message msg = new Message();
 		msg.sender = username;
 		msg.content = content;
-
-		if (recipient.equals("All (Broadcast)")) {
-			msg.type = Message.MessageType.BROADCAST;
-		} else if (usersList.getItems().contains(recipient) && !recipient.startsWith("---")) {
-			boolean isGroup = false;
-			for(String s : usersList.getItems()) {
-				if(s.equals("--- GROUPS ---")) isGroup = true;
-				if(s.equals(recipient) && isGroup) break;
-				if(s.equals(recipient) && !isGroup) break;
-			}
-			msg.type = isGroup ? Message.MessageType.GROUP_MESSAGE : Message.MessageType.PRIVATE;
-			msg.recipient = recipient;
-		}
+		msg.type = Message.MessageType.CHAT;
 
 		clientConnection.send(msg);
-		messageInput.clear();
+		chatInput.clear();
 	}
-
-	// Method to create Group
-	private void createGroup() {
-		String gName = groupInput.getText().trim();
-		if(!gName.isEmpty()) {
-			Message msg = new Message();
-			msg.type = Message.MessageType.CREATE_GROUP;
-			msg.sender = username;
-			msg.recipient = gName;
-			clientConnection.send(msg);
-			groupInput.clear();
-		}
-	}
-
 }
