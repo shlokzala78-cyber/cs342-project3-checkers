@@ -291,14 +291,21 @@ public class GuiClient extends Application {
 
 				// 2. Check if this was a jump (a move of 2 squares instead of 1)
 				if (Math.abs(msg.startRow - msg.endRow) == 2) {
-					// Find the coordinates of the jumped piece and delete it
 					int jumpedRow = (msg.startRow + msg.endRow) / 2;
 					int jumpedCol = (msg.startCol + msg.endCol) / 2;
 					boardSquares[jumpedRow][jumpedCol].getChildren().clear();
 				}
 
-				// 3. Update the turn indicator using data sent from the server
-				turnIndicator.setText("Whose Turn: " + msg.content);
+				// 3. Read the payload from the Server ("Turn,IsKing")
+				String[] payload = msg.content.split(",");
+				turnIndicator.setText("Whose Turn: " + payload[0]);
+
+				// 4. King Promotion Visuals (Add a thick Gold border!)
+				if (payload.length > 1 && payload[1].equals("true")) {
+					Circle promotedPiece = (Circle) boardSquares[msg.endRow][msg.endCol].getChildren().get(0);
+					promotedPiece.setStroke(Color.GOLD);
+					promotedPiece.setStrokeWidth(4);
+				}
 				break;
 
 			case GAME_OVER:
