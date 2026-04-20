@@ -283,15 +283,27 @@ public class GuiClient extends Application {
 				break;
 
 			case MOVE:
-				// SERVER CODE REQUIREMENT: The server has validated this move and broadcasted it back.
-				// We just visually move the piece from the start coordinates to the end coordinates.
+				// 1. Move the piece visually
 				if (!boardSquares[msg.startRow][msg.startCol].getChildren().isEmpty()) {
 					javafx.scene.Node piece = boardSquares[msg.startRow][msg.startCol].getChildren().remove(0);
 					boardSquares[msg.endRow][msg.endCol].getChildren().add(piece);
 				}
 
-				// Note: If a piece was captured (jumped), the SERVER will need to send a separate
-				// command or a full board update to tell the client to remove the jumped piece.
+				// 2. Check if this was a jump (a move of 2 squares instead of 1)
+				if (Math.abs(msg.startRow - msg.endRow) == 2) {
+					// Find the coordinates of the jumped piece and delete it
+					int jumpedRow = (msg.startRow + msg.endRow) / 2;
+					int jumpedCol = (msg.startCol + msg.endCol) / 2;
+					boardSquares[jumpedRow][jumpedCol].getChildren().clear();
+				}
+
+				// 3. Update the turn indicator using data sent from the server
+				turnIndicator.setText("Whose Turn: " + msg.content);
+				break;
+
+			case GAME_OVER:
+				// When the server announces a winner, display it!
+				turnIndicator.setText("GAME OVER: " + msg.content);
 				break;
 		}
 	}
