@@ -6,6 +6,8 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.Queue;
+import java.util.LinkedList;
 
 import javafx.application.Platform;
 import javafx.scene.control.ListView;
@@ -17,6 +19,7 @@ public class Server{
 	int count = 1; // Tracks the total number of connection attempts
 	ConcurrentHashMap<String, ClientThread> clients = new ConcurrentHashMap<>();
 	ConcurrentHashMap<String, ArrayList<String>> groups = new ConcurrentHashMap<>();
+	Queue<ClientThread> waitingPlayers = new LinkedList<>();
 	TheServer server;
 	private Consumer<Serializable> callback;
 	
@@ -114,6 +117,28 @@ public class Server{
 
 									callback.accept(username + " joined the server.");
 									broadcastClientList();
+
+									// Add player to waiting queue
+									waitingPlayers.add(this);
+									callback.accept(username + " added to waiting queue.");
+
+									// If 2 players are waiting, match them
+									if (waitingPlayers.size() >= 2) {
+										ClientThread p1 = waitingPlayers.poll();
+										ClientThread p2 = waitingPlayers.poll();
+
+										Message matchMsg1 = new Message();
+										matchMsg1.type = Message.MessageType.MATCH_FOUND;
+										matchMsg1.content = "Match found against " + p2.username;
+										p1.out.writeObject(matchMsg1);
+
+										Message matchMsg2 = new Message();
+										matchMsg2.type = Message.MessageType.MATCH_FOUND;
+										matchMsg2.content = "Match found against " + p1.username;
+										p2.out.writeObject(matchMsg2);
+
+										callback.accept("Match created: " + p1.username + " vs " + p2.username);
+									}
 								}
 								break;
 

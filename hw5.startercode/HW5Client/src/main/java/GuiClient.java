@@ -171,6 +171,9 @@ public class GuiClient extends Application{
 			case GROUP_MESSAGE: // Group Message
 				messageList.getItems().add("[Group: " + msg.recipient + "] " + msg.sender + ": " + msg.content);
 				break;
+			case MATCH_FOUND:
+				messageList.getItems().add("[System] " + msg.content);
+				break;
 		}
 	}
 

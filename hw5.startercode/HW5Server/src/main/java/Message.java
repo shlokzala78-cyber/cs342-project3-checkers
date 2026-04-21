@@ -12,7 +12,8 @@ public class Message implements Serializable {
         BROADCAST,          // Message to everyone
         PRIVATE,            // Message to a specific user
         CREATE_GROUP,       // Request to create a new group
-        GROUP_MESSAGE       // Message to a specific group
+        GROUP_MESSAGE,       // Message to a specific group
+        MATCH_FOUND
     }
 
     public MessageType type;
