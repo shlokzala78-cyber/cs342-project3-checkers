@@ -1,5 +1,6 @@
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 public class Message implements Serializable {
     static final long serialVersionUID = 42L;
@@ -13,13 +14,17 @@ public class Message implements Serializable {
         REMATCH_REJECTED,    // A player clicked "Quit" or disconnected
         PLAY_AI,            // Request to play against the computer
         SET_DIFFICULTY,
+        DRAW_ACCEPTED,
+        DRAW_REJECTED,
         CHALLENGE,          // Request to play a specific user
         GAME_START,         // Server tells clients the game is starting
         MOVE,               // A player makes a move on the board
         CHAT,               // In-game text messaging
         OFFER_DRAW,         // A player offers a draw
         QUIT,               // A player quits the match
-        GAME_OVER           // Server announces the winner
+        GAME_OVER,          // Server announces the winner
+        REQUEST_HINT,
+        HINT_RESPONSE
     }
 
     public MessageType type;
@@ -35,7 +40,11 @@ public class Message implements Serializable {
     public int endRow;
     public int endCol;
 
+    public HashMap<String, ArrayList<String>> validMoves;
+    public int playerColor; // 1 for Red, 2 for Black
+
     public Message() {
         this.activeUsers = new ArrayList<>();
+        this.validMoves = new HashMap<>();
     }
 }
