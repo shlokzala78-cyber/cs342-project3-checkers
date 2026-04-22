@@ -41,6 +41,11 @@ public class GuiClient extends Application {
 	Label turnIndicator;
 	Label capturedInfo;
 
+	VBox leftMenu;
+	Button easyBtn;
+	Button medBtn;
+	Button hardBtn;
+
 	// Board State
 	private StackPane[][] boardSquares = new StackPane[8][8];
 	private int selectedRow = -1;
@@ -87,7 +92,16 @@ public class GuiClient extends Application {
 		usernameInput.setPromptText("Username");
 
 		Button connectBtn = new Button("Connect to Server");
+
+		Button guestBtn = new Button("Play as Guest");
+		guestBtn.setOnAction(e -> {
+			usernameInput.setText("Guest_" + (int)(Math.random() * 10000));
+			connectBtn.fire(); // Simulates clicking the connect button
+		});
+
 		loginStatus = new Label("Status: Disconnected");
+
+		loginBox.getChildren().addAll(title, new Label("Server IP Address:"), ipInput, new Label("Username:"), usernameInput, connectBtn, guestBtn, loginStatus);
 
 		connectBtn.setOnAction(e -> {
 			Message req = new Message();
@@ -96,7 +110,6 @@ public class GuiClient extends Application {
 			clientConnection.send(req);
 		});
 
-		loginBox.getChildren().addAll(title, new Label("Server IP Address:"), ipInput, new Label("Username:"), usernameInput, connectBtn, loginStatus);
 		loginBox.setStyle("-fx-background-color: cyan;");
 
 		return new Scene(loginBox, 400, 300);
@@ -111,6 +124,19 @@ public class GuiClient extends Application {
 		usersList = new ListView<>();
 
 		Button challengeBtn = new Button("Challenge Selected Player");
+
+		Button aiBtn = new Button("Play Single Player");
+		aiBtn.setStyle("-fx-background-color: gold; -fx-font-weight: bold;");
+		aiBtn.setOnAction(e -> {
+			Message req = new Message();
+			req.type = Message.MessageType.PLAY_AI;
+			req.sender = username;
+			clientConnection.send(req);
+		});
+
+
+		waitingBox.getChildren().addAll(welcomeLabel, usersList, challengeBtn, new Label("--- OR ---"), aiBtn);
+
 		challengeBtn.setOnAction(e -> {
 			String selected = usersList.getSelectionModel().getSelectedItem();
 			if (selected != null) {
@@ -122,7 +148,6 @@ public class GuiClient extends Application {
 			}
 		});
 
-		waitingBox.getChildren().addAll(welcomeLabel, usersList, challengeBtn);
 		waitingBox.setStyle("-fx-background-color: cyan;");
 
 		return new Scene(waitingBox, 400, 400);
@@ -186,6 +211,43 @@ public class GuiClient extends Application {
 
 		rightMenu.getChildren().addAll(new Label("Text Messaging"), gameChat, chatControls, drawBtn, quitBtn);
 		gameLayout.setRight(rightMenu);
+
+		leftMenu = new VBox(10);
+		leftMenu.setPadding(new Insets(10));
+		leftMenu.setPrefWidth(120);
+
+		Label diffLabel = new Label("AI Difficulty:");
+		diffLabel.setStyle("-fx-font-weight: bold;");
+
+		easyBtn = new Button("Easy");
+		medBtn = new Button("Medium");
+		hardBtn = new Button("Hard");
+
+		// Action to send the difficulty and lock the buttons
+		javafx.event.EventHandler<javafx.event.ActionEvent> setDiff = e -> {
+			Button clicked = (Button) e.getSource();
+			Message msg = new Message();
+			msg.type = Message.MessageType.SET_DIFFICULTY;
+			msg.sender = username;
+			msg.content = clicked.getText(); // "Easy", "Medium", or "Hard"
+			clientConnection.send(msg);
+
+			// Lock the buttons so they cannot be changed mid-game
+			easyBtn.setDisable(true);
+			medBtn.setDisable(true);
+			hardBtn.setDisable(true);
+
+			turnIndicator.setText("Whose Turn: Black (AI is thinking...)");
+		};
+
+		easyBtn.setOnAction(setDiff);
+		medBtn.setOnAction(setDiff);
+		hardBtn.setOnAction(setDiff);
+
+		leftMenu.getChildren().addAll(diffLabel, easyBtn, medBtn, hardBtn);
+		leftMenu.setVisible(false); // Hide by default until an AI game starts
+
+		gameLayout.setLeft(leftMenu);
 
 		return new Scene(gameLayout, 700, 500);
 	}
@@ -274,8 +336,19 @@ public class GuiClient extends Application {
 			case GAME_START:
 				stage.setScene(gameScene);
 				stage.setTitle("Checkers Game: " + username + " vs " + msg.sender);
-				initializeBoard(); // Put the pieces on the board!
-				turnIndicator.setText("Whose Turn: Red"); // Assuming Red goes first
+				initializeBoard();
+
+				// Show difficulty menu ONLY if playing with AI
+				if (msg.sender.equals("Computer (AI)")) {
+					leftMenu.setVisible(true);
+					easyBtn.setDisable(false);
+					medBtn.setDisable(false);
+					hardBtn.setDisable(false);
+					turnIndicator.setText("Select Difficulty to Begin!");
+				} else {
+					leftMenu.setVisible(false);
+					turnIndicator.setText("Whose Turn: Black");
+				}
 				break;
 
 			case CHAT:
