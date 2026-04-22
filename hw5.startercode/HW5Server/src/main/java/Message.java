@@ -5,15 +5,18 @@ public class Message implements Serializable {
     static final long serialVersionUID = 42L;
 
     public enum MessageType {
-        CONNECT,            // Client requesting a username
-        CONNECT_SUCCESS,    // Server approving username
-        CONNECT_FAIL,       // Server rejecting username
-        CLIENT_LIST,        // Server updating clients with active users/groups
-        BROADCAST,          // Message to everyone
-        PRIVATE,            // Message to a specific user
-        CREATE_GROUP,       // Request to create a new group
-        GROUP_MESSAGE,       // Message to a specific group
-        MATCH_FOUND
+        CONNECT,            // Client requests a username
+        CONNECT_SUCCESS,    // Server approves username
+        CONNECT_FAIL,       // Server rejects username
+        CLIENT_LIST,        // Server updates waiting room list
+
+        CHALLENGE,          // Request to play a specific user
+        GAME_START,         // Server tells clients the game is starting
+        MOVE,               // A player makes a move on the board
+        CHAT,               // In-game text messaging
+        OFFER_DRAW,         // A player offers a draw
+        QUIT,               // A player quits the match
+        GAME_OVER           // Server announces the winner
     }
 
     public MessageType type;
@@ -21,10 +24,14 @@ public class Message implements Serializable {
     public String recipient;
     public String content;
     public ArrayList<String> activeUsers;
-    public ArrayList<String> activeGroups;
+
+    // Move coordinates for checkers
+    public int startRow;
+    public int startCol;
+    public int endRow;
+    public int endCol;
 
     public Message() {
         this.activeUsers = new ArrayList<>();
-        this.activeGroups = new ArrayList<>();
     }
 }

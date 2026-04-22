@@ -1,27 +1,18 @@
-
-import java.util.HashMap;
-
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.control.ListView;
-import javafx.scene.control.TextField;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
-import javafx.stage.WindowEvent;
 
 public class GuiClient extends Application {
 	Client clientConnection;
 	String username;
+	String playerColor = "";   // NEW: "Red" or "Black"
 
 	// Scenes
 	Scene loginScene;
@@ -96,7 +87,15 @@ public class GuiClient extends Application {
 			clientConnection.send(req);
 		});
 
-		loginBox.getChildren().addAll(title, new Label("Server IP Address:"), ipInput, new Label("Username:"), usernameInput, connectBtn, loginStatus);
+		loginBox.getChildren().addAll(
+				title,
+				new Label("Server IP Address:"),
+				ipInput,
+				new Label("Username:"),
+				usernameInput,
+				connectBtn,
+				loginStatus
+		);
 		loginBox.setStyle("-fx-background-color: cyan;");
 
 		return new Scene(loginBox, 400, 300);
@@ -134,43 +133,34 @@ public class GuiClient extends Application {
 		gameLayout.setPadding(new Insets(10));
 		gameLayout.setStyle("-fx-background-color: cyan;");
 
-		// Top: Status Info matching your wireframe
 		VBox topBox = new VBox(5);
 		capturedInfo = new Label("Captured Pieces: 0");
 		turnIndicator = new Label("Whose Turn: Waiting for Server...");
 		topBox.getChildren().addAll(capturedInfo, turnIndicator);
 		gameLayout.setTop(topBox);
 
-		// Center: The Checkerboard
 		checkerBoard = new GridPane();
 		checkerBoard.setStyle("-fx-border-color: black; -fx-border-width: 2;");
 		checkerBoard.setMaxSize(400, 400);
 
-		// Generate the 8x8 grid
 		for (int row = 0; row < 8; row++) {
 			for (int col = 0; col < 8; col++) {
 				StackPane square = new StackPane();
 				square.setPrefSize(50, 50);
 
-				// Alternate colors for standard checkerboard
-				if ((row + col) % 2 == 0) {
-					square.setStyle("-fx-background-color: #ffce9e;"); // Light square
-				} else {
-					square.setStyle("-fx-background-color: #d18b47;"); // Dark square
-				}
+				boardSquares[row][col] = square;
+				checkerBoard.add(square, col, row);
 
-				// Attach click listener for moving pieces
+				resetSquareColor(row, col);
+
 				final int r = row;
 				final int c = col;
 				square.setOnMouseClicked(e -> handleSquareClick(r, c));
 
-				boardSquares[row][col] = square;
-				checkerBoard.add(square, col, row);
 			}
 		}
 		gameLayout.setCenter(checkerBoard);
 
-		// Right: Chat and Controls
 		VBox rightMenu = new VBox(10);
 		rightMenu.setPadding(new Insets(10));
 		rightMenu.setPrefWidth(200);
@@ -192,18 +182,17 @@ public class GuiClient extends Application {
 
 	// --- CLIENT GAME LOGIC ---
 
-	// Populates the initial standard checkers setup
 	private void initializeBoard() {
 		for (int row = 0; row < 8; row++) {
 			for (int col = 0; col < 8; col++) {
-				boardSquares[row][col].getChildren().clear(); // Clear board
+				boardSquares[row][col].getChildren().clear();
+				resetSquareColor(row, col);
 
-				// Pieces only go on dark squares
 				if ((row + col) % 2 != 0) {
 					if (row < 3) {
-						addPieceToSquare(row, col, Color.BLACK); // Top player is Black
+						addPieceToSquare(row, col, Color.BLACK);
 					} else if (row > 4) {
-						addPieceToSquare(row, col, Color.RED);   // Bottom player is Red
+						addPieceToSquare(row, col, Color.RED);
 					}
 				}
 			}
@@ -212,26 +201,41 @@ public class GuiClient extends Application {
 
 	private void addPieceToSquare(int row, int col, Color color) {
 		Circle piece = new Circle(20, color);
-		piece.setStroke(Color.BLACK); // Give pieces a border so they pop
+		piece.setStroke(Color.BLACK);
 		piece.setStrokeWidth(2);
 		boardSquares[row][col].getChildren().add(piece);
 	}
 
-	// Handles the user clicking on the board
+	// NEW: restores the original checkerboard color correctly
+	private void resetSquareColor(int row, int col) {
+		if ((row + col) % 2 == 0) {
+			boardSquares[row][col].setStyle("-fx-background-color: #ffce9e;");
+		} else {
+			boardSquares[row][col].setStyle("-fx-background-color: #d18b47;");
+		}
+	}
+
 	private void handleSquareClick(int row, int col) {
-		// First click: Select a square
+		// First click: select one of YOUR own pieces only
 		if (selectedRow == -1 && selectedCol == -1) {
-			// Only allow selection if the square actually has a piece in it
 			if (!boardSquares[row][col].getChildren().isEmpty()) {
+				Circle piece = (Circle) boardSquares[row][col].getChildren().get(0);
+
+				boolean isMyPiece =
+						(playerColor.equals("Red") && piece.getFill().equals(Color.RED)) ||
+								(playerColor.equals("Black") && piece.getFill().equals(Color.BLACK));
+
+				if (!isMyPiece) {
+					return;
+				}
+
 				selectedRow = row;
 				selectedCol = col;
-				// Highlight the selected square in yellow
 				boardSquares[row][col].setStyle("-fx-background-color: yellow; -fx-border-color: red; -fx-border-width: 2;");
 			}
 		}
-		// Second click: Attempt a move
+		// Second click: send move request
 		else {
-			// Send the requested move to the server for validation
 			Message moveMsg = new Message();
 			moveMsg.type = Message.MessageType.MOVE;
 			moveMsg.sender = username;
@@ -242,8 +246,7 @@ public class GuiClient extends Application {
 
 			clientConnection.send(moveMsg);
 
-			// Reset selection visuals back to the dark wood color
-			boardSquares[selectedRow][selectedCol].setStyle("-fx-background-color: #d18b47;");
+			resetSquareColor(selectedRow, selectedCol);
 			selectedRow = -1;
 			selectedCol = -1;
 		}
@@ -274,8 +277,17 @@ public class GuiClient extends Application {
 			case GAME_START:
 				stage.setScene(gameScene);
 				stage.setTitle("Checkers Game: " + username + " vs " + msg.sender);
-				initializeBoard(); // Put the pieces on the board!
-				turnIndicator.setText("Whose Turn: Red"); // Assuming Red goes first
+				initializeBoard();
+
+				// Expected format: "myColor,currentTurn"
+				String[] startInfo = msg.content.split(",");
+				if (startInfo.length >= 2) {
+					playerColor = startInfo[0];
+					turnIndicator.setText("Whose Turn: " + startInfo[1]);
+				} else {
+					// fallback if server only sends one value
+					turnIndicator.setText("Whose Turn: " + msg.content);
+				}
 				break;
 
 			case CHAT:
@@ -283,24 +295,20 @@ public class GuiClient extends Application {
 				break;
 
 			case MOVE:
-				// 1. Move the piece visually
 				if (!boardSquares[msg.startRow][msg.startCol].getChildren().isEmpty()) {
 					javafx.scene.Node piece = boardSquares[msg.startRow][msg.startCol].getChildren().remove(0);
 					boardSquares[msg.endRow][msg.endCol].getChildren().add(piece);
 				}
 
-				// 2. Check if this was a jump (a move of 2 squares instead of 1)
 				if (Math.abs(msg.startRow - msg.endRow) == 2) {
 					int jumpedRow = (msg.startRow + msg.endRow) / 2;
 					int jumpedCol = (msg.startCol + msg.endCol) / 2;
 					boardSquares[jumpedRow][jumpedCol].getChildren().clear();
 				}
 
-				// 3. Read the payload from the Server ("Turn,IsKing")
 				String[] payload = msg.content.split(",");
 				turnIndicator.setText("Whose Turn: " + payload[0]);
 
-				// 4. King Promotion Visuals (Add a thick Gold border!)
 				if (payload.length > 1 && payload[1].equals("true")) {
 					Circle promotedPiece = (Circle) boardSquares[msg.endRow][msg.endCol].getChildren().get(0);
 					promotedPiece.setStroke(Color.GOLD);
@@ -309,11 +317,7 @@ public class GuiClient extends Application {
 				break;
 
 			case GAME_OVER:
-				// When the server announces a winner, display it!
 				turnIndicator.setText("GAME OVER: " + msg.content);
-				break;
-			case MATCH_FOUND:
-				messageList.getItems().add("[System] " + msg.content);
 				break;
 		}
 	}
