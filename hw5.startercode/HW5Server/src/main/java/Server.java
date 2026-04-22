@@ -56,6 +56,10 @@ public class Server{
 		int activeJumpRow = -1;
 		int activeJumpCol = -1;
 
+		boolean isGameOver = false;
+		boolean redWantsRematch = false;
+		boolean blackWantsRematch = false;
+
 		GameSession(ClientThread p1, ClientThread p2) {
 			this.redPlayer = p1;
 			this.blackPlayer = p2;
@@ -127,6 +131,7 @@ public class Server{
 				board[moveMsg.endRow][moveMsg.endCol] = 4; // Black King
 				promotedThisTurn = true;
 			}
+
 
 			// JUMP & TURN LOGIC
 			// If they jumped, didn't get promoted, and can jump again with the same piece -> turn continues
@@ -223,18 +228,51 @@ public class Server{
 		}
 
 		public void handleGameOver(String winnerName) {
+			isGameOver = true;
+			redWantsRematch = false;
+			blackWantsRematch = false;
+
 			Message overMsg = new Message();
 			overMsg.type = Message.MessageType.GAME_OVER;
-			overMsg.content = winnerName + " Wins!";
+			overMsg.content = winnerName;
 
 			try {
 				redPlayer.out.writeObject(overMsg);
 				blackPlayer.out.writeObject(overMsg);
 			} catch (Exception e) {}
 
+			callback.accept("Game Over. " + winnerName);
+			// Notice we do NOT remove them from activeGames yet. We wait for their button clicks!
+		}
+
+		public synchronized void handleRematchRequest(ClientThread sender) {
+			if (sender == redPlayer) redWantsRematch = true;
+			else if (sender == blackPlayer) blackWantsRematch = true;
+
+			// If BOTH players clicked Play Again, restart the game!
+			if (redWantsRematch && blackWantsRematch) {
+				isGameOver = false;
+				redWantsRematch = false;
+				blackWantsRematch = false;
+				redTurn = false; // Black always moves first
+
+				setupBoard();
+				startGame();
+			}
+		}
+
+		public synchronized void handleQuit(ClientThread sender) {
+			// Figure out who the opponent is
+			ClientThread opponent = (sender == redPlayer) ? blackPlayer : redPlayer;
+
+			// Tell the opponent the match was cancelled
+			Message rejectMsg = new Message();
+			rejectMsg.type = Message.MessageType.REMATCH_REJECTED;
+			try { opponent.out.writeObject(rejectMsg); } catch (Exception e) {}
+
+			// Now we remove them from the active games list
 			activeGames.remove(redPlayer.username);
 			activeGames.remove(blackPlayer.username);
-			callback.accept("Game Over. " + winnerName + " won.");
 
 			redPlayer.broadcastClientList();
 		}
@@ -332,11 +370,25 @@ public class Server{
 							}
 							break;
 
+						case REMATCH_REQUEST:
+							if (activeGames.containsKey(this.username)) {
+								activeGames.get(this.username).handleRematchRequest(this);
+							}
+							break;
+
 						case QUIT:
 							if (activeGames.containsKey(this.username)) {
 								GameSession game = activeGames.get(this.username);
-								String opponentName = (game.redPlayer == this) ? game.blackPlayer.username : game.redPlayer.username;
-								game.handleGameOver(opponentName + " (Opponent Forfeit)");
+
+								if (game.isGameOver) {
+									// They are quitting from the Game Over screen
+									game.handleQuit(this);
+								} else {
+									// They clicked quit in the middle of an active game (Forfeit)
+									String opponentName = (game.redPlayer == this) ? game.blackPlayer.username : game.redPlayer.username;
+									game.handleGameOver(opponentName + " Wins! (Opponent Forfeit)");
+									game.handleQuit(this);
+								}
 							}
 							break;
 					}
