@@ -309,8 +309,17 @@ public class GuiClient extends Application {
 				break;
 
 			case GAME_OVER:
-				// When the server announces a winner, display it!
 				turnIndicator.setText("GAME OVER: " + msg.content);
+				showGameOverDialog(msg.content);
+				break;
+
+			case REMATCH_REJECTED:
+				// The opponent clicked quit, so we must return to the lobby too
+				Alert alert = new Alert(Alert.AlertType.INFORMATION, "Your opponent has left the match.");
+				alert.showAndWait();
+
+				stage.setScene(waitingScene);
+				stage.setTitle("Checkers - Waiting Room (" + username + ")");
 				break;
 		}
 	}
@@ -326,5 +335,37 @@ public class GuiClient extends Application {
 
 		clientConnection.send(msg);
 		chatInput.clear();
+	}
+
+	private void showGameOverDialog(String result) {
+		Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+		alert.setTitle("Game Over");
+		alert.setHeaderText(result);
+		alert.setContentText("Would you like to play again with this opponent?");
+
+		ButtonType playAgainBtn = new ButtonType("Play Again");
+		ButtonType quitBtn = new ButtonType("Quit to Lobby");
+
+		alert.getButtonTypes().setAll(playAgainBtn, quitBtn);
+
+		// Wait for the user to click a button
+		alert.showAndWait().ifPresent(type -> {
+			Message req = new Message();
+			req.sender = username;
+
+			if (type == playAgainBtn) {
+				req.type = Message.MessageType.REMATCH_REQUEST;
+				clientConnection.send(req);
+				turnIndicator.setText("Waiting for opponent to accept...");
+			} else {
+				req.type = Message.MessageType.QUIT;
+				clientConnection.send(req);
+
+				// Return this player to the lobby immediately
+				Stage stage = (Stage) checkerBoard.getScene().getWindow();
+				stage.setScene(waitingScene);
+				stage.setTitle("Checkers - Waiting Room (" + username + ")");
+			}
+		});
 	}
 }

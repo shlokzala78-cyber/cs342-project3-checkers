@@ -9,8 +9,8 @@ public class Message implements Serializable {
         CONNECT_SUCCESS,    // Server approves username
         CONNECT_FAIL,       // Server rejects username
         CLIENT_LIST,        // Server updates waiting room list
-
-        // --- NEW CHECKERS COMMANDS ---
+        REMATCH_REQUEST,    // A player clicked "Play Again"
+        REMATCH_REJECTED,   // A player clicked "Quit" or disconnected
         CHALLENGE,          // Request to play a specific user
         GAME_START,         // Server tells clients the game is starting
         MOVE,               // A player makes a move on the board
