@@ -31,10 +31,10 @@ public class Server{
 
 	public class TheServer extends Thread {
 		public void run() {
-			try (ServerSocket mysocket = new ServerSocket(5555)) {
+			try (ServerSocket my_socket = new ServerSocket(5555)) {
 				callback.accept("Server is waiting for clients on port 5555...");
 				while (true) {
-					ClientThread c = new ClientThread(mysocket.accept(), count);
+					ClientThread c = new ClientThread(my_socket.accept(), count);
 					c.start();
 					count++;
 				}
@@ -48,6 +48,8 @@ public class Server{
 	class GameSession {
 		ClientThread redPlayer;
 		ClientThread blackPlayer;
+		boolean isAI = false;
+		String aiDifficulty = "Medium";
 
 		// 0=Empty, 1=Red, 2=Black, 3=RedKing, 4=BlackKing
 		int[][] board = new int[8][8];
@@ -60,10 +62,16 @@ public class Server{
 		boolean redWantsRematch = false;
 		boolean blackWantsRematch = false;
 
-		GameSession(ClientThread p1, ClientThread p2) {
+		GameSession(ClientThread p1, ClientThread p2, boolean isAI, String diff) {
 			this.redPlayer = p1;
 			this.blackPlayer = p2;
+			this.isAI = isAI;
+			if (diff != null) this.aiDifficulty = diff;
 			setupBoard();
+		}
+
+		GameSession(ClientThread p1, ClientThread p2) {
+			this(p1, p2, false, "Medium");
 		}
 
 		private void setupBoard() {
@@ -82,13 +90,30 @@ public class Server{
 			Message startMsg = new Message();
 			startMsg.type = Message.MessageType.GAME_START;
 
-			startMsg.sender = blackPlayer.username;
-			try { redPlayer.out.writeObject(startMsg); } catch (Exception e) {}
+			startMsg.sender = isAI ? "Computer (AI)" : blackPlayer.username;
+			try {
+				redPlayer.out.writeObject(startMsg);
+			} catch (Exception e) {
+			}
 
-			startMsg.sender = redPlayer.username;
-			try { blackPlayer.out.writeObject(startMsg); } catch (Exception e) {}
+			if (!isAI) {
+				startMsg.sender = redPlayer.username;
+				try {
+					blackPlayer.out.writeObject(startMsg);
+				} catch (Exception e) {
+				}
+			}
 
-			callback.accept("Match Started: " + redPlayer.username + " (Red) vs " + blackPlayer.username + " (Black)");
+			callback.accept("Match Started: " + redPlayer.username + " vs " + startMsg.sender);
+		}
+
+		public synchronized void handleSetDifficulty(String diff) {
+			this.aiDifficulty = diff;
+			callback.accept("AI Difficulty set to: " + diff);
+
+			if (isAI && !redTurn && !isGameOver) {
+				triggerAITurn();
+			}
 		}
 
 		public synchronized void handleMove(Message moveMsg, ClientThread sender) {
@@ -157,6 +182,10 @@ public class Server{
 			if (!playerHasAnyMoves(redTurn)) {
 
 				handleGameOver(redTurn ? blackPlayer.username : redPlayer.username);
+			}
+
+			if (isAI && !redTurn && !isGameOver) {
+				triggerAITurn();
 			}
 		}
 
@@ -236,25 +265,26 @@ public class Server{
 			overMsg.type = Message.MessageType.GAME_OVER;
 			overMsg.content = winnerName;
 
-			try {
-				redPlayer.out.writeObject(overMsg);
-				blackPlayer.out.writeObject(overMsg);
-			} catch (Exception e) {}
-
+			try { redPlayer.out.writeObject(overMsg); } catch (Exception e) {}
+			// Only send to black if it's a real human player
+			if (!isAI) {
+				try { blackPlayer.out.writeObject(overMsg); } catch (Exception e) {}
+			}
 			callback.accept("Game Over. " + winnerName);
-			// Notice we do NOT remove them from activeGames yet. We wait for their button clicks!
 		}
 
 		public synchronized void handleRematchRequest(ClientThread sender) {
 			if (sender == redPlayer) redWantsRematch = true;
 			else if (sender == blackPlayer) blackWantsRematch = true;
 
-			// If BOTH players clicked Play Again, restart the game!
+			// If playing AI, automatically accept the rematch!
+			if (isAI && redWantsRematch) blackWantsRematch = true;
+
 			if (redWantsRematch && blackWantsRematch) {
 				isGameOver = false;
 				redWantsRematch = false;
 				blackWantsRematch = false;
-				redTurn = false; // Black always moves first
+				redTurn = false;
 
 				setupBoard();
 				startGame();
@@ -262,19 +292,162 @@ public class Server{
 		}
 
 		public synchronized void handleQuit(ClientThread sender) {
-			// Figure out who the opponent is
-			ClientThread opponent = (sender == redPlayer) ? blackPlayer : redPlayer;
+			if (!isAI) {
+				ClientThread opponent = (sender == redPlayer) ? blackPlayer : redPlayer;
+				Message rejectMsg = new Message();
+				rejectMsg.type = Message.MessageType.REMATCH_REJECTED;
+				try { opponent.out.writeObject(rejectMsg); } catch (Exception e) {}
+				activeGames.remove(blackPlayer.username);
+			}
 
-			// Tell the opponent the match was cancelled
-			Message rejectMsg = new Message();
-			rejectMsg.type = Message.MessageType.REMATCH_REJECTED;
-			try { opponent.out.writeObject(rejectMsg); } catch (Exception e) {}
-
-			// Now we remove them from the active games list
 			activeGames.remove(redPlayer.username);
-			activeGames.remove(blackPlayer.username);
-
 			redPlayer.broadcastClientList();
+		}
+
+		private void triggerAITurn() {
+			new Thread(() -> {
+				try { Thread.sleep(800); } catch (Exception e) {}
+
+				ArrayList<Message> legalMoves = generateAllLegalMoves(false);
+
+				if (legalMoves.isEmpty()) {
+					handleGameOver(redPlayer.username + " Wins!");
+					return;
+				}
+
+				Message bestMove = legalMoves.get(0);
+
+				if (aiDifficulty.equals("Easy")) {
+					// EASY: Pick a completely random legal move
+					bestMove = legalMoves.get((int)(Math.random() * legalMoves.size()));
+				}
+				else {
+					// MEDIUM & HARD: Evaluate board states
+					int bestScore = Integer.MIN_VALUE;
+
+					for (Message move : legalMoves) {
+						int score = simulateAndScoreMove(move);
+						if (score > bestScore) {
+							bestScore = score;
+							bestMove = move;
+						}
+					}
+				}
+
+				handleMove(bestMove, null);
+			}).start();
+		}
+
+		// Generates every possible legal move for the AI
+		private ArrayList<Message> generateAllLegalMoves(boolean isRed) {
+			ArrayList<Message> moves = new ArrayList<>();
+			boolean mustJump = canPlayerJump(isRed);
+			int[] dRow = {-1, -1, 1, 1, -2, -2, 2, 2};
+			int[] dCol = {-1, 1, -1, 1, -2, 2, -2, 2};
+
+			for (int r = 0; r < 8; r++) {
+				for (int c = 0; c < 8; c++) {
+					int piece = board[r][c];
+					if (!isRed && (piece == 2 || piece == 4)) {
+						if (activeJumpRow != -1 && (r != activeJumpRow || c != activeJumpCol)) continue;
+
+						for (int i = 0; i < 8; i++) {
+							int er = r + dRow[i];
+							int ec = c + dCol[i];
+							boolean isJump = Math.abs(dRow[i]) == 2;
+
+							if (mustJump && !isJump) continue;
+
+							if (isValidMove(r, c, er, ec, isRed, piece, isJump)) {
+								Message m = new Message();
+								m.type = Message.MessageType.MOVE;
+								m.startRow = r; m.startCol = c;
+								m.endRow = er; m.endCol = ec;
+								moves.add(m);
+							}
+						}
+					}
+				}
+			}
+			return moves;
+		}
+
+		// Scores a hypothetical move
+		private int simulateAndScoreMove(Message m) {
+			int[][] tempBoard = new int[8][8];
+			for (int i = 0; i < 8; i++) System.arraycopy(board[i], 0, tempBoard[i], 0, 8);
+
+			// Execute hypothetical move
+			int piece = tempBoard[m.startRow][m.startCol];
+			tempBoard[m.endRow][m.endCol] = piece;
+			tempBoard[m.startRow][m.startCol] = 0;
+
+			if (Math.abs(m.startRow - m.endRow) == 2) {
+				tempBoard[(m.startRow + m.endRow) / 2][(m.startCol + m.endCol) / 2] = 0;
+			}
+			if (piece == 2 && m.endRow == 7) tempBoard[m.endRow][m.endCol] = 4;
+
+			int score = 0;
+			for (int r = 0; r < 8; r++) {
+				for (int c = 0; c < 8; c++) {
+					if (tempBoard[r][c] == 2) score += (10 + r);
+					else if (tempBoard[r][c] == 4) score += 30;
+					else if (tempBoard[r][c] == 1) score -= 10;
+					else if (tempBoard[r][c] == 3) score -= 30;
+				}
+			}
+
+			// HARD MODE UPGRADE: Tactical Look-Ahead
+			// Penalize moves that leave the AI vulnerable to being jumped by the human next turn
+			if (aiDifficulty.equals("Hard") && humanCanJump(tempBoard)) {
+				score -= 50;
+			}
+
+			return score;
+		}
+
+		// Helper for Hard Mode: Checks if the Human (Red) has a valid jump on the hypothetical board
+		private boolean humanCanJump(int[][] tempBoard) {
+			int[] dRow = {-2, -2};
+			int[] dCol = {-2, 2};
+
+			for (int r = 0; r < 8; r++) {
+				for (int c = 0; c < 8; c++) {
+					int piece = tempBoard[r][c];
+
+					if (piece == 1 || piece == 3) {
+						for(int i=0; i<2; i++) {
+							int jumpRow = r + dRow[i];
+							int jumpCol = c + dCol[i];
+							int midRow = r + (dRow[i]/2);
+							int midCol = c + (dCol[i]/2);
+
+							if (jumpRow >= 0 && jumpRow < 8 && jumpCol >= 0 && jumpCol < 8) {
+								if (tempBoard[jumpRow][jumpCol] == 0) {
+									int midPiece = tempBoard[midRow][midCol];
+									if (midPiece == 2 || midPiece == 4) return true; // Human can capture!
+								}
+							}
+						}
+						// Check backward jumps if Human has a King
+						if (piece == 3) {
+							int[] dRowK = {2, 2};
+							for(int i=0; i<2; i++) {
+								int jumpRow = r + dRowK[i];
+								int jumpCol = c + dCol[i];
+								int midRow = r + (dRowK[i]/2);
+								int midCol = c + (dCol[i]/2);
+
+								if (jumpRow >= 0 && jumpRow < 8 && jumpCol >= 0 && jumpCol < 8 && tempBoard[jumpRow][jumpCol] == 0) {
+									int midPiece = tempBoard[midRow][midCol];
+									if (midPiece == 2 || midPiece == 4) return true;
+								}
+							}
+						}
+					}
+				}
+			}
+			return false;
 		}
 	}
 
@@ -367,6 +540,22 @@ public class Server{
 
 								this.out.writeObject(data);
 								opponent.out.writeObject(data);
+							}
+							break;
+
+						case PLAY_AI:
+							if (!activeGames.containsKey(this.username)) {
+								// Default to Medium, it will be overwritten shortly
+								GameSession newGame = new GameSession(this, null, true, "Medium");
+								activeGames.put(this.username, newGame);
+								newGame.startGame();
+								broadcastClientList();
+							}
+							break;
+
+						case SET_DIFFICULTY:
+							if (activeGames.containsKey(this.username)) {
+								activeGames.get(this.username).handleSetDifficulty(data.content);
 							}
 							break;
 

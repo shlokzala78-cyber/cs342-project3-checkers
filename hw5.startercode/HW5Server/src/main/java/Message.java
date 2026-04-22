@@ -11,6 +11,8 @@ public class Message implements Serializable {
         CLIENT_LIST,        // Server updates waiting room list
         REMATCH_REQUEST,    // A player clicked "Play Again"
         REMATCH_REJECTED,    // A player clicked "Quit" or disconnected
+        PLAY_AI,            // Request to play against the computer
+        SET_DIFFICULTY,
         CHALLENGE,          // Request to play a specific user
         GAME_START,         // Server tells clients the game is starting
         MOVE,               // A player makes a move on the board
@@ -25,6 +27,7 @@ public class Message implements Serializable {
     public String recipient;
     public String content;
     public ArrayList<String> activeUsers;
+    public String difficulty; // "Easy", "Medium", or "Hard"
 
     // Variables specifically for Checkers moves (e.g., moving from row 2, col 3 to row 3, col 4)
     public int startRow;
