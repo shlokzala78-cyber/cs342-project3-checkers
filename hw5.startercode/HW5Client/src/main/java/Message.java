@@ -24,7 +24,13 @@ public class Message implements Serializable {
         QUIT,               // A player quits the match
         GAME_OVER,          // Server announces the winner
         REQUEST_HINT,
-        HINT_RESPONSE
+        HINT_RESPONSE,
+        LOGOUT,
+        STATS_UPDATE,
+        ADD_FRIEND,
+        FRIEND_REQUEST,
+        FRIEND_ACCEPTED,
+        FRIEND_DECLINED
     }
 
     public MessageType type;
@@ -43,8 +49,13 @@ public class Message implements Serializable {
     public HashMap<String, ArrayList<String>> validMoves;
     public int playerColor; // 1 for Red, 2 for Black
 
+    public int wins;
+    public int losses;
+    public ArrayList<String> onlineFriends;
+
     public Message() {
         this.activeUsers = new ArrayList<>();
         this.validMoves = new HashMap<>();
+        this.onlineFriends = new ArrayList<>();
     }
 }

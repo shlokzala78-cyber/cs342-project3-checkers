@@ -7,56 +7,77 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.HashSet;
 
 
 // Main class for server
 // Creates thread for each connected client and manages them simultaneously
-public class Server{
 
-	int count = 1; // Tracks the total number of connection attempts
+public class Server {
+	int count = 1;
 	ConcurrentHashMap<String, ClientThread> clients = new ConcurrentHashMap<>();
 	ConcurrentHashMap<String, GameSession> activeGames = new ConcurrentHashMap<>();
+
+	// --- IN-MEMORY DATABASE ---
+	ConcurrentHashMap<String, UserProfile> userDatabase = new ConcurrentHashMap<>();
+
 	TheServer server;
 	private Consumer<Serializable> callback;
-	
-	
-	Server(Consumer<Serializable> call){
-	
+
+	Server(Consumer<Serializable> call) {
 		callback = call;
 		server = new TheServer();
 		server.start();
 	}
 
-
 	public class TheServer extends Thread {
 		public void run() {
-			try (ServerSocket my_socket = new ServerSocket(5555)) {
+			try (ServerSocket mysocket = new ServerSocket(5555)) {
 				callback.accept("Server is waiting for clients on port 5555...");
 				while (true) {
-					ClientThread c = new ClientThread(my_socket.accept(), count);
+					ClientThread c = new ClientThread(mysocket.accept(), count);
 					c.start();
 					count++;
 				}
-			} catch (Exception e) {
-				callback.accept("Server socket did not launch");
-			}
+			} catch (Exception e) {}
 		}
 	}
 
-	// Managing Game Session
+	// =========================================================================
+	// IN-MEMORY USER DATA
+	// =========================================================================
+	static class UserProfile {
+		String username;
+		int wins = 0;
+		int losses = 0;
+		HashSet<String> friends = new HashSet<>();
+
+		UserProfile(String username) {
+			this.username = username;
+		}
+	}
+
+	private void updateStats(String winner, String loser) {
+		if (winner != null && userDatabase.containsKey(winner)) {
+			userDatabase.get(winner).wins++;
+		}
+		if (loser != null && userDatabase.containsKey(loser)) {
+			userDatabase.get(loser).losses++;
+		}
+	}
+
+	// =========================================================================
+	// MANAGING A SINGLE GAME
+	// =========================================================================
 	class GameSession {
 		ClientThread redPlayer;
 		ClientThread blackPlayer;
 		boolean isAI = false;
 		String aiDifficulty = "Medium";
-
-		// 0=Empty, 1=Red, 2=Black, 3=RedKing, 4=BlackKing
 		int[][] board = new int[8][8];
-
-		boolean redTurn = false; // Rule: Black moves first
+		boolean redTurn = false;
 		int activeJumpRow = -1;
 		int activeJumpCol = -1;
-
 		boolean isGameOver = false;
 		boolean redWantsRematch = false;
 		boolean blackWantsRematch = false;
@@ -101,14 +122,14 @@ public class Server{
 			Message startMsgRed = new Message();
 			startMsgRed.type = Message.MessageType.GAME_START;
 			startMsgRed.sender = isAI ? "Computer (AI)" : blackPlayer.username;
-			startMsgRed.playerColor = 1; // Tell Red they are Red
-			startMsgRed.validMoves = getValidMovesMap(false); // Black goes first, so UI highlights black moves
+			startMsgRed.playerColor = 1;
+			startMsgRed.validMoves = getValidMovesMap(false);
 
 			Message startMsgBlack = new Message();
 			if (!isAI) {
 				startMsgBlack.type = Message.MessageType.GAME_START;
 				startMsgBlack.sender = redPlayer.username;
-				startMsgBlack.playerColor = 2; // Tell Black they are Black
+				startMsgBlack.playerColor = 2;
 				startMsgBlack.validMoves = getValidMovesMap(false);
 			}
 
@@ -117,12 +138,12 @@ public class Server{
 				if (!isAI) blackPlayer.out.writeObject(startMsgBlack);
 			} catch (Exception e) {}
 
-			callback.accept("Match Started: " + redPlayer.username + " vs " + startMsgRed.sender);
+			callback.accept("Match Started: " + redPlayer.username + " (Red) vs " + startMsgRed.sender + " (Black)");
 		}
 
 		public synchronized void handleSetDifficulty(String diff) {
 			this.aiDifficulty = diff;
-			callback.accept("AI Difficulty set to: " + diff);
+			callback.accept("AI Difficulty set to " + diff + " for " + redPlayer.username);
 			if (isAI && !redTurn && !isGameOver) triggerAITurn();
 		}
 
@@ -139,7 +160,6 @@ public class Server{
 			if (jumpAvailable && !isAttemptingJump) return;
 			if (!isValidMove(moveMsg.startRow, moveMsg.startCol, moveMsg.endRow, moveMsg.endCol, isRed, pieceType, isAttemptingJump)) return;
 
-			// Execute Move
 			board[moveMsg.endRow][moveMsg.endCol] = pieceType;
 			board[moveMsg.startRow][moveMsg.startCol] = 0;
 
@@ -169,7 +189,6 @@ public class Server{
 				moveMsg.content = (redTurn ? "Red" : "Black") + "," + promotedThisTurn;
 			}
 
-			// --- Attach Valid Moves for the NEXT player to the message! ---
 			moveMsg.validMoves = getValidMovesMap(redTurn);
 
 			try {
@@ -178,13 +197,16 @@ public class Server{
 			} catch (Exception e) {}
 
 			if (!playerHasAnyMoves(redTurn)) {
-				handleGameOver(redTurn ? (isAI ? "Computer (AI)" : blackPlayer.username) : redPlayer.username);
+				String winner = redTurn ? (isAI ? null : blackPlayer.username) : redPlayer.username;
+				String loser = redTurn ? redPlayer.username : (isAI ? null : blackPlayer.username);
+
+				updateStats(winner, loser);
+				handleGameOver((winner == null ? "Computer (AI)" : winner) + " Wins!");
 			} else if (isAI && !redTurn && !isGameOver) {
 				triggerAITurn();
 			}
 		}
 
-		// --- RULE ENGINE (Unchanged, handles multi jumps natively) ---
 		private boolean isValidMove(int sr, int sc, int er, int ec, boolean isRed, int piece, boolean isJump) {
 			if (er < 0 || er > 7 || ec < 0 || ec > 7) return false;
 			if (board[er][ec] != 0) return false;
@@ -247,20 +269,21 @@ public class Server{
 			return false;
 		}
 
-		public void handleGameOver(String winnerName) {
+		public void handleGameOver(String winState) {
 			isGameOver = true;
 			redWantsRematch = false;
 			blackWantsRematch = false;
 
 			Message overMsg = new Message();
 			overMsg.type = Message.MessageType.GAME_OVER;
-			overMsg.content = winnerName;
+			overMsg.content = winState;
+
+			callback.accept("Game Over: " + winState);
 
 			try { redPlayer.out.writeObject(overMsg); } catch (Exception e) {}
 			if (!isAI) {
 				try { blackPlayer.out.writeObject(overMsg); } catch (Exception e) {}
 			}
-			callback.accept("Game Over. " + winnerName);
 		}
 
 		public synchronized void handleRematchRequest(ClientThread sender) {
@@ -274,6 +297,9 @@ public class Server{
 				redWantsRematch = false;
 				blackWantsRematch = false;
 				redTurn = false;
+
+				callback.accept("Rematch started between " + redPlayer.username + " and " + (isAI ? "Computer (AI)" : blackPlayer.username));
+
 				setupBoard();
 				startGame();
 			}
@@ -375,6 +401,7 @@ public class Server{
 				try { Thread.sleep(800); } catch (Exception e) {}
 				ArrayList<Message> legalMoves = generateAllLegalMoves(false);
 				if (legalMoves.isEmpty()) {
+					updateStats(redPlayer.username, null);
 					handleGameOver(redPlayer.username + " Wins!");
 					return;
 				}
@@ -395,7 +422,9 @@ public class Server{
 		}
 	}
 
-	// INDIVIDUAL CLIENT HANDLER
+	// =========================================================================
+	// CLIENT CONNECTION HANDLER
+	// =========================================================================
 	class ClientThread extends Thread {
 		Socket connection;
 		int count;
@@ -408,15 +437,41 @@ public class Server{
 			this.count = count;
 		}
 
+		public void sendStatsUpdate() {
+			if (userDatabase.containsKey(this.username)) {
+				Message statsMsg = new Message();
+				statsMsg.type = Message.MessageType.STATS_UPDATE;
+				statsMsg.wins = userDatabase.get(this.username).wins;
+				statsMsg.losses = userDatabase.get(this.username).losses;
+				try { this.out.writeObject(statsMsg); } catch (Exception e) {}
+			}
+		}
+
 		public void broadcastClientList() {
 			Message updateMsg = new Message();
 			updateMsg.type = Message.MessageType.CLIENT_LIST;
 			updateMsg.activeUsers = new ArrayList<>();
+			updateMsg.onlineFriends = new ArrayList<>();
+
 			for (String user : clients.keySet()) {
 				if (!activeGames.containsKey(user)) updateMsg.activeUsers.add(user);
 			}
+
 			for (ClientThread t : clients.values()) {
-				try { t.out.writeObject(updateMsg); } catch (Exception e) {}
+				Message personalizedMsg = new Message();
+				personalizedMsg.type = updateMsg.type;
+				personalizedMsg.activeUsers = new ArrayList<>(updateMsg.activeUsers);
+
+				if (userDatabase.containsKey(t.username)) {
+					for (String friend : userDatabase.get(t.username).friends) {
+						if (clients.containsKey(friend) && !activeGames.containsKey(friend)) {
+							personalizedMsg.onlineFriends.add(friend);
+						}
+					}
+				}
+
+				try { t.out.writeObject(personalizedMsg); } catch (Exception e) {}
+				t.sendStatsUpdate();
 			}
 		}
 
@@ -440,6 +495,13 @@ public class Server{
 							} else {
 								this.username = data.sender;
 								clients.put(this.username, this);
+
+								if (!userDatabase.containsKey(this.username)) {
+									userDatabase.put(this.username, new UserProfile(this.username));
+								}
+
+								callback.accept(this.username + " joined the server.");
+
 								Message successMsg = new Message();
 								successMsg.type = Message.MessageType.CONNECT_SUCCESS;
 								out.writeObject(successMsg);
@@ -447,8 +509,15 @@ public class Server{
 							}
 							break;
 
+						case LOGOUT:
+							callback.accept(this.username + " returned to the login screen.");
+							clients.remove(this.username);
+							broadcastClientList();
+							break;
+
 						case CHALLENGE:
 							if (clients.containsKey(data.recipient) && !activeGames.containsKey(data.recipient)) {
+								callback.accept(this.username + " challenged " + data.recipient + " to a match.");
 								GameSession newGame = new GameSession(this, clients.get(data.recipient));
 								activeGames.put(this.username, newGame);
 								activeGames.put(data.recipient, newGame);
@@ -457,8 +526,35 @@ public class Server{
 							}
 							break;
 
+						case ADD_FRIEND:
+							if (clients.containsKey(data.recipient)) {
+								callback.accept(this.username + " sent a friend request to " + data.recipient + ".");
+
+								// FIX: We must change the message type so the recipient knows it is a request!
+								data.type = Message.MessageType.FRIEND_REQUEST;
+								try { clients.get(data.recipient).out.writeObject(data); } catch (Exception e) {}
+							}
+							break;
+
+						case FRIEND_ACCEPTED:
+							if (userDatabase.containsKey(this.username) && userDatabase.containsKey(data.recipient)) {
+								callback.accept(this.username + " and " + data.recipient + " are now friends.");
+								userDatabase.get(this.username).friends.add(data.recipient);
+								userDatabase.get(data.recipient).friends.add(this.username);
+								broadcastClientList();
+							}
+							break;
+
+						case FRIEND_DECLINED:
+							if (clients.containsKey(data.recipient)) {
+								callback.accept(this.username + " declined " + data.recipient + "'s friend request.");
+								try { clients.get(data.recipient).out.writeObject(data); } catch (Exception e) {}
+							}
+							break;
+
 						case PLAY_AI:
 							if (!activeGames.containsKey(this.username)) {
+								callback.accept(this.username + " started a match against the AI.");
 								GameSession newGame = new GameSession(this, null, true, "Medium");
 								activeGames.put(this.username, newGame);
 								newGame.startGame();
@@ -474,21 +570,18 @@ public class Server{
 							if (activeGames.containsKey(this.username)) activeGames.get(this.username).handleMove(data, this);
 							break;
 
-						// --- NEW: Handle Hint Requests by running the AI engine for the human! ---
 						case REQUEST_HINT:
 							if (activeGames.containsKey(this.username)) {
 								GameSession game = activeGames.get(this.username);
 								boolean isRedReq = (this == game.redPlayer);
-
-								// Only give a hint if it's actually their turn
 								if (isRedReq == game.redTurn) {
+									callback.accept(this.username + " requested a hint.");
 									ArrayList<Message> legal = game.generateAllLegalMoves(isRedReq);
 									if (!legal.isEmpty()) {
 										Message bestMove = legal.get(0);
 										int bestScore = Integer.MIN_VALUE;
 										for (Message m : legal) {
 											int score = game.simulateAndScoreMove(m);
-											// Reverse the score logic because simulateAndScoreMove favors Black pieces
 											score = isRedReq ? -score : score;
 											if (score > bestScore) { bestScore = score; bestMove = m; }
 										}
@@ -499,27 +592,26 @@ public class Server{
 							}
 							break;
 
-						// --- NEW: Route the Draw Offer ---
 						case OFFER_DRAW:
 							if (activeGames.containsKey(this.username)) {
 								GameSession game = activeGames.get(this.username);
 								if (!game.isAI) {
+									callback.accept(this.username + " offered a draw.");
 									ClientThread opp = (this == game.redPlayer) ? game.blackPlayer : game.redPlayer;
 									try { opp.out.writeObject(data); } catch (Exception e) {}
 								}
 							}
 							break;
 
-						// --- NEW: End Game if Draw Accepted ---
 						case DRAW_ACCEPTED:
 							if (activeGames.containsKey(this.username)) {
 								activeGames.get(this.username).handleGameOver("Draw! (Mutual Agreement)");
 							}
 							break;
 
-						// --- NEW: Route the Draw Rejection ---
 						case DRAW_REJECTED:
 							if (activeGames.containsKey(this.username)) {
+								callback.accept(this.username + " rejected the draw.");
 								GameSession game = activeGames.get(this.username);
 								ClientThread opp = (this == game.redPlayer) ? game.blackPlayer : game.redPlayer;
 								try { opp.out.writeObject(data); } catch (Exception e) {}
@@ -529,6 +621,7 @@ public class Server{
 						case CHAT:
 							if (activeGames.containsKey(this.username)) {
 								GameSession game = activeGames.get(this.username);
+								callback.accept("[CHAT] " + this.username + ": " + data.content);
 								if (!game.isAI) {
 									ClientThread opp = (game.redPlayer == this) ? game.blackPlayer : game.redPlayer;
 									this.out.writeObject(data);
@@ -545,12 +638,14 @@ public class Server{
 
 						case QUIT:
 							if (activeGames.containsKey(this.username)) {
+								callback.accept(this.username + " quit the match.");
 								GameSession game = activeGames.get(this.username);
 								if (game.isGameOver) {
 									game.handleQuit(this);
 								} else {
-									String oppName = game.isAI ? "Computer (AI)" : ((game.redPlayer == this) ? game.blackPlayer.username : game.redPlayer.username);
-									game.handleGameOver(oppName + " Wins! (Opponent Forfeit)");
+									String oppName = game.isAI ? null : ((game.redPlayer == this) ? game.blackPlayer.username : game.redPlayer.username);
+									updateStats(oppName, this.username);
+									game.handleGameOver((oppName == null ? "Computer (AI)" : oppName) + " Wins! (Opponent Forfeit)");
 									game.handleQuit(this);
 								}
 							}
@@ -558,10 +653,13 @@ public class Server{
 					}
 				} catch (Exception e) {
 					if (!this.username.isEmpty()) {
+						callback.accept(this.username + " disconnected from the server unexpectedly.");
 						if (activeGames.containsKey(this.username)) {
 							GameSession game = activeGames.get(this.username);
-							String oppName = game.isAI ? "Computer (AI)" : ((game.redPlayer == this) ? game.blackPlayer.username : game.redPlayer.username);
-							game.handleGameOver(oppName + " (Opponent Disconnected)");
+							String oppName = game.isAI ? null : ((game.redPlayer == this) ? game.blackPlayer.username : game.redPlayer.username);
+
+							updateStats(oppName, this.username);
+							game.handleGameOver((oppName == null ? "Computer (AI)" : oppName) + " (Opponent Disconnected)");
 							game.handleQuit(this);
 						}
 						clients.remove(this.username);
