@@ -14,6 +14,7 @@ import javafx.scene.shape.Circle;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
 import java.util.ArrayList;
 
@@ -32,6 +33,7 @@ public class GuiClient extends Application {
 	TextField usernameInput;
 	Label loginStatus;
 	ListView<String> usersList;
+	LoginView loginView;
 
 	// Game Specific UI Elements
 	GridPane checkerBoard;
@@ -72,10 +74,28 @@ public class GuiClient extends Application {
 		});
 		clientConnection.start();
 
-		loginScene = createLoginGui();
+		loginView = new LoginView();
+		loginScene = loginView.createScene();
+
+		ipInput = loginView.ipInput;
+		usernameInput = loginView.usernameInput;
+		loginStatus = loginView.loginStatus;
+
+		loginView.guestBtn.setOnAction(e -> {
+			usernameInput.setText("Guest_" + (int)(Math.random() * 10000));
+			loginView.connectBtn.fire();
+		});
+
+		loginView.connectBtn.setOnAction(e -> {
+			Message req = new Message();
+			req.type = Message.MessageType.CONNECT;
+			req.sender = usernameInput.getText();
+			clientConnection.send(req);
+		});
+
 		waitingScene = createWaitingGui();
 		gameScene = createGameGui();
-		gameOverScene = createGameOverGui(); // Initialize the new scene
+		gameOverScene = createGameOverGui();
 
 		primaryStage.setOnCloseRequest(t -> {
 			Platform.exit();
@@ -87,52 +107,54 @@ public class GuiClient extends Application {
 		primaryStage.show();
 	}
 
-	// --- SCENE 1: LOGIN SCREEN ---
-	private Scene createLoginGui() {
-		VBox loginBox = new VBox(15);
-		loginBox.setAlignment(Pos.CENTER);
-		loginBox.setPadding(new Insets(20));
-
-		Label title = new Label("Checkers Login");
-		title.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
-
-		ipInput = new TextField("127.0.0.1");
-		ipInput.setPromptText("Server IP Address");
-
-		usernameInput = new TextField();
-		usernameInput.setPromptText("Username");
-
-		Button connectBtn = new Button("Connect to Server");
-		Button guestBtn = new Button("Play as Guest");
-		guestBtn.setOnAction(e -> {
-			usernameInput.setText("Guest_" + (int)(Math.random() * 10000));
-			connectBtn.fire();
-		});
-
-		loginStatus = new Label("Status: Disconnected");
-
-		connectBtn.setOnAction(e -> {
-			Message req = new Message();
-			req.type = Message.MessageType.CONNECT;
-			req.sender = usernameInput.getText();
-			clientConnection.send(req);
-		});
-
-		loginBox.getChildren().addAll(title, new Label("Server IP Address:"), ipInput, new Label("Username:"), usernameInput, connectBtn, guestBtn, loginStatus);
-		loginBox.setStyle("-fx-background-color: cyan;");
-
-		return new Scene(loginBox, 400, 350);
-	}
-
 	// --- SCENE 2: WAITING / MATCHMAKING SCREEN ---
 	private Scene createWaitingGui() {
-		VBox waitingBox = new VBox(10);
-		waitingBox.setPadding(new Insets(20));
+		StackPane root = new StackPane();
+		root.getStyleClass().add("waiting-root");
 
-		Label welcomeLabel = new Label("Online Players:");
+		VBox boardStrip = new VBox();
+		boardStrip.getStyleClass().add("board-strip");
+		boardStrip.setPrefWidth(220);
+		boardStrip.setMaxHeight(Double.MAX_VALUE);
+		StackPane.setAlignment(boardStrip, Pos.CENTER_LEFT);
+
+		VBox card = new VBox(16);
+		card.getStyleClass().add("waiting-card");
+		card.setAlignment(Pos.TOP_CENTER);
+		card.setMaxWidth(560);
+		card.setPadding(new Insets(28, 34, 28, 34));
+
+		HBox topPieces = new HBox(16);
+		topPieces.setAlignment(Pos.CENTER);
+
+		Circle redPiece = new Circle(10);
+		redPiece.getStyleClass().add("red-piece");
+
+		Circle blackPiece = new Circle(10);
+		blackPiece.getStyleClass().add("black-piece");
+
+		topPieces.getChildren().addAll(redPiece, blackPiece);
+
+		Label title = new Label("WAITING ROOM");
+		title.getStyleClass().add("waiting-title");
+
+		Label subtitle = new Label("Choose an online player or start a single-player match");
+		subtitle.getStyleClass().add("waiting-subtitle");
+		subtitle.setWrapText(true);
+		subtitle.setTextAlignment(TextAlignment.CENTER);
+
+		Label onlineLabel = new Label("Online Players");
+		onlineLabel.getStyleClass().add("waiting-section-label");
+
 		usersList = new ListView<>();
+		usersList.getStyleClass().add("players-list");
+		usersList.setPrefHeight(220);
+		VBox.setVgrow(usersList, Priority.ALWAYS);
 
-		Button challengeBtn = new Button("Challenge Selected Player");
+		Button challengeBtn = new Button("CHALLENGE SELECTED PLAYER");
+		challengeBtn.getStyleClass().addAll("waiting-btn", "primary-btn");
+		challengeBtn.setMaxWidth(Double.MAX_VALUE);
+		challengeBtn.setPrefHeight(48);
 		challengeBtn.setOnAction(e -> {
 			String selected = usersList.getSelectionModel().getSelectedItem();
 			if (selected != null) {
@@ -144,8 +166,13 @@ public class GuiClient extends Application {
 			}
 		});
 
-		Button aiBtn = new Button("Play Single Player");
-		aiBtn.setStyle("-fx-background-color: gold; -fx-font-weight: bold;");
+		Label dividerText = new Label("OR");
+		dividerText.getStyleClass().add("waiting-divider");
+
+		Button aiBtn = new Button("PLAY SINGLE PLAYER");
+		aiBtn.getStyleClass().addAll("waiting-btn", "ai-btn");
+		aiBtn.setMaxWidth(Double.MAX_VALUE);
+		aiBtn.setPrefHeight(44);
 		aiBtn.setOnAction(e -> {
 			Message req = new Message();
 			req.type = Message.MessageType.PLAY_AI;
@@ -153,10 +180,26 @@ public class GuiClient extends Application {
 			clientConnection.send(req);
 		});
 
-		waitingBox.getChildren().addAll(welcomeLabel, usersList, challengeBtn, new Label("--- OR ---"), aiBtn);
-		waitingBox.setStyle("-fx-background-color: cyan;");
+		Label tipLabel = new Label("Tip: Select a player from the list to send a challenge.");
+		tipLabel.getStyleClass().add("waiting-tip");
 
-		return new Scene(waitingBox, 400, 400);
+		card.getChildren().addAll(
+				topPieces,
+				title,
+				subtitle,
+				onlineLabel,
+				usersList,
+				challengeBtn,
+				dividerText,
+				aiBtn,
+				tipLabel
+		);
+
+		root.getChildren().addAll(boardStrip, card);
+
+		Scene scene = new Scene(root, 900, 620);
+		scene.getStylesheets().add(getClass().getResource("/login.css").toExternalForm());
+		return scene;
 	}
 
 	// --- SCENE 3: GAMEBOARD SCREEN ---

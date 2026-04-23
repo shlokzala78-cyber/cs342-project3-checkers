@@ -1,0 +1,235 @@
+.login-root {
+    -fx-background-color: linear-gradient(to bottom right, #5a3921, #2a180f);
+    -fx-font-family: "Segoe UI", sans-serif;
+}
+
+.board-strip {
+    -fx-background-color:
+            linear-gradient(to bottom,
+            #7a5230 0%, #7a5230 12.5%,
+            #d5b38a 12.5%, #d5b38a 25%,
+            #7a5230 25%, #7a5230 37.5%,
+            #d5b38a 37.5%, #d5b38a 50%,
+            #7a5230 50%, #7a5230 62.5%,
+            #d5b38a 62.5%, #d5b38a 75%,
+            #7a5230 75%, #7a5230 87.5%,
+            #d5b38a 87.5%, #d5b38a 100%);
+    -fx-opacity: 0.32;
+}
+
+.login-card {
+    -fx-background-color: #efe0c4;
+    -fx-background-radius: 30;
+    -fx-border-color: #9b734d;
+    -fx-border-radius: 30;
+    -fx-border-width: 3;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 28, 0.28, 0, 10);
+}
+
+.red-piece {
+    -fx-fill: #d9332a;
+    -fx-stroke: #8f1712;
+    -fx-stroke-width: 2;
+}
+
+.black-piece {
+    -fx-fill: #2d3138;
+    -fx-stroke: #111111;
+    -fx-stroke-width: 2;
+}
+
+.login-title {
+    -fx-font-size: 62px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2b1a10;
+    -fx-padding: 0 0 2 0;
+}
+
+.login-subtitle {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #b12a22;
+    -fx-padding: 0 0 8 0;
+}
+
+.field-icon {
+    -fx-font-size: 15px;
+    -fx-text-fill: #7a5230;
+    -fx-opacity: 0.8;
+    -fx-min-width: 24px;
+    -fx-alignment: center-left;
+}
+
+.field-label {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #3a2718;
+}
+
+.game-field {
+    -fx-background-color: #fff9ef;
+    -fx-background-radius: 14;
+    -fx-border-color: #b4916d;
+    -fx-border-radius: 14;
+    -fx-border-width: 2;
+    -fx-font-size: 17px;
+    -fx-padding: 8 14 8 14;
+    -fx-text-fill: #2a1b12;
+    -fx-prompt-text-fill: #8f7c67;
+}
+
+.game-field:focused {
+    -fx-border-color: #b88a5a;
+    -fx-background-color: #fffdf8;
+    -fx-effect: dropshadow(gaussian, rgba(184,138,90,0.2), 6, 0.2, 0, 0);
+}
+
+.game-btn {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 24;
+    -fx-border-radius: 24;
+    -fx-cursor: hand;
+}
+
+.primary-btn {
+    -fx-background-color: linear-gradient(to bottom, #d9332a, #a81310);
+    -fx-text-fill: white;
+    -fx-border-color: #7a0f0d;
+    -fx-border-width: 1.5;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 8, 0.2, 0, 3);
+}
+
+.primary-btn:hover {
+    -fx-background-color: linear-gradient(to bottom, #e6453c, #ba1d18);
+    -fx-translate-y: -1;
+}
+
+.primary-btn:pressed {
+    -fx-background-color: linear-gradient(to bottom, #a81310, #7f0f0d);
+    -fx-translate-y: 1;
+}
+
+.secondary-btn {
+    -fx-background-color: linear-gradient(to bottom, #ead8b9, #d7c09a);
+    -fx-text-fill: #332014;
+    -fx-border-color: #a68158;
+    -fx-border-width: 1.5;
+}
+
+.secondary-btn:hover {
+    -fx-background-color: linear-gradient(to bottom, #f3e1c2, #e0c9a3);
+    -fx-translate-y: -1;
+}
+
+.secondary-btn:pressed {
+    -fx-background-color: linear-gradient(to bottom, #d7c09a, #c6ad84);
+    -fx-translate-y: 1;
+}
+
+.status-label {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #b12a22;
+    -fx-padding: 10 0 0 0;
+}
+
+.waiting-root {
+    -fx-background-color: linear-gradient(to bottom right, #5a3921, #2a180f);
+}
+
+.waiting-card {
+    -fx-background-color: #efe0c4;
+    -fx-background-radius: 30;
+    -fx-border-color: #9b734d;
+    -fx-border-radius: 30;
+    -fx-border-width: 3;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 32, 0.3, 0, 12);
+}
+
+.waiting-title {
+    -fx-font-size: 44px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #2b1a10;
+    -fx-padding: 4 0 2 0;
+}
+
+.waiting-subtitle {
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #b12a22;
+    -fx-padding: 0 0 8 0;
+}
+
+.waiting-section-label {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #3a2718;
+    -fx-padding: 8 0 2 0;
+}
+
+.players-list {
+    -fx-background-color: #fff9ef;
+    -fx-background-radius: 16;
+    -fx-border-color: #b4916d;
+    -fx-border-radius: 16;
+    -fx-border-width: 2;
+    -fx-padding: 6;
+}
+
+.players-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #2a1b12;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-padding: 10 12 10 12;
+}
+
+.players-list .list-cell:filled:selected {
+    -fx-background-color: linear-gradient(to right, #ead8b9, #d7c09a);
+    -fx-background-radius: 10;
+    -fx-text-fill: #2a1b12;
+}
+
+.players-list .list-cell:filled:hover {
+    -fx-background-color: rgba(180, 145, 109, 0.25);
+    -fx-background-radius: 10;
+}
+
+.waiting-btn {
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+    -fx-background-radius: 24;
+    -fx-border-radius: 24;
+    -fx-cursor: hand;
+}
+
+.ai-btn {
+    -fx-background-color: linear-gradient(to bottom, #f2c94c, #d4a72c);
+    -fx-text-fill: #332014;
+    -fx-border-color: #9b734d;
+    -fx-border-width: 1.5;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 8, 0.2, 0, 2);
+}
+
+.ai-btn:hover {
+    -fx-background-color: linear-gradient(to bottom, #f7d76b, #dfb63d);
+    -fx-translate-y: -1;
+}
+
+.ai-btn:pressed {
+    -fx-background-color: linear-gradient(to bottom, #d4a72c, #bb9220);
+}
+
+.waiting-divider {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #7a5230;
+}
+
+.waiting-tip {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #7a5230;
+    -fx-padding: 6 0 0 0;
+}

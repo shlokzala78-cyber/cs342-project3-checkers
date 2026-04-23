@@ -1,0 +1,19 @@
+# IntelliJ
+.idea/
+**/.idea/
+*.iml
+
+# Maven build output
+target/
+**/target/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Existing
+/shelf/
+/workspace.xml
+/httpRequests/
+/dataSources/
+/dataSources.local.xml
