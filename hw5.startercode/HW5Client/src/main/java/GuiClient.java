@@ -322,29 +322,48 @@ public class GuiClient extends Application {
 	// --- SCENE 3: GAMEBOARD SCREEN ---
 	private Scene createGameGui(Stage stage) {
 		BorderPane gameLayout = new BorderPane();
-		gameLayout.setPadding(new Insets(10));
-		gameLayout.setStyle("-fx-background-color: cyan;");
+		gameLayout.getStyleClass().add("game-root");
+		gameLayout.setPadding(new Insets(18));
 
-		VBox topBox = new VBox(5);
+		// TOP INFO BAR
+		VBox topBox = new VBox(8);
+		topBox.getStyleClass().add("top-info-box");
+		topBox.setAlignment(Pos.CENTER);
+
 		playerInfoLabel = new Label("You are: Waiting...");
-		playerInfoLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: darkblue;");
+		playerInfoLabel.getStyleClass().add("player-info-label");
+
 		turnIndicator = new Label("Whose Turn: Waiting for Server...");
-		turnIndicator.setStyle("-fx-font-size: 16px;");
+		turnIndicator.getStyleClass().add("turn-indicator-label");
+
 		topBox.getChildren().addAll(playerInfoLabel, turnIndicator);
 		gameLayout.setTop(topBox);
 
-		leftMenu = new VBox(10);
-		leftMenu.setPadding(new Insets(10));
-		leftMenu.setPrefWidth(120);
-		Label diffLabel = new Label("AI Difficulty:");
-		diffLabel.setStyle("-fx-font-weight: bold;");
+		// LEFT MENU
+		leftMenu = new VBox(12);
+		leftMenu.getStyleClass().add("side-panel");
+		leftMenu.setPrefWidth(150);
+		leftMenu.setAlignment(Pos.TOP_CENTER);
+
+		Label diffLabel = new Label("AI Difficulty");
+		diffLabel.getStyleClass().add("panel-title");
+
 		easyBtn = new Button("Easy");
 		medBtn = new Button("Medium");
 		hardBtn = new Button("Hard");
 
+		easyBtn.getStyleClass().addAll("game-btn", "secondary-game-btn");
+		medBtn.getStyleClass().addAll("game-btn", "secondary-game-btn");
+		hardBtn.getStyleClass().addAll("game-btn", "secondary-game-btn");
+
+		easyBtn.setMaxWidth(Double.MAX_VALUE);
+		medBtn.setMaxWidth(Double.MAX_VALUE);
+		hardBtn.setMaxWidth(Double.MAX_VALUE);
+
 		javafx.event.EventHandler<javafx.event.ActionEvent> setDiff = e -> {
 			Button clicked = (Button) e.getSource();
 			String diff = clicked.getText();
+
 			Message msg = new Message();
 			msg.type = Message.MessageType.SET_DIFFICULTY;
 			msg.sender = username;
@@ -354,6 +373,7 @@ public class GuiClient extends Application {
 			easyBtn.setDisable(true);
 			medBtn.setDisable(true);
 			hardBtn.setDisable(true);
+
 			hintBtn.setVisible(!diff.equals("Hard"));
 			turnIndicator.setText("Whose Turn: Black (AI is thinking...)");
 		};
@@ -361,19 +381,33 @@ public class GuiClient extends Application {
 		easyBtn.setOnAction(setDiff);
 		medBtn.setOnAction(setDiff);
 		hardBtn.setOnAction(setDiff);
+
 		leftMenu.getChildren().addAll(diffLabel, easyBtn, medBtn, hardBtn);
 		leftMenu.setVisible(false);
 		gameLayout.setLeft(leftMenu);
 
+		// CENTER BOARD WRAPPER
+		StackPane boardWrapper = new StackPane();
+		boardWrapper.getStyleClass().add("board-wrapper");
+		boardWrapper.setPadding(new Insets(10));
+
 		checkerBoard = new GridPane();
-		checkerBoard.setStyle("-fx-border-color: black; -fx-border-width: 2;");
-		checkerBoard.setMaxSize(400, 400);
+		checkerBoard.getStyleClass().add("board");
+		checkerBoard.setAlignment(Pos.CENTER);
+		checkerBoard.setHgap(0);
+		checkerBoard.setVgap(0);
+		checkerBoard.setMaxSize(480, 480);
+
 		for (int row = 0; row < 8; row++) {
 			for (int col = 0; col < 8; col++) {
 				StackPane square = new StackPane();
-				square.setPrefSize(50, 50);
-				if ((row + col) % 2 == 0) square.setStyle("-fx-background-color: #ffce9e;");
-				else square.setStyle("-fx-background-color: #d18b47;");
+				square.setPrefSize(58, 58);
+
+				if ((row + col) % 2 == 0) {
+					square.getStyleClass().addAll("light-square", "square-hover");
+				} else {
+					square.getStyleClass().addAll("dark-square", "square-hover");
+				}
 
 				final int r = row;
 				final int c = col;
@@ -383,19 +417,37 @@ public class GuiClient extends Application {
 				checkerBoard.add(square, col, row);
 			}
 		}
-		gameLayout.setCenter(checkerBoard);
 
-		VBox rightMenu = new VBox(10);
-		rightMenu.setPadding(new Insets(10));
-		rightMenu.setPrefWidth(200);
+		boardWrapper.getChildren().add(checkerBoard);
+		gameLayout.setCenter(boardWrapper);
+
+		// RIGHT PANEL
+		VBox rightMenu = new VBox(12);
+		rightMenu.getStyleClass().add("side-panel");
+		rightMenu.setPrefWidth(260);
+
+		Label chatTitle = new Label("Match Chat");
+		chatTitle.getStyleClass().add("panel-title");
 
 		gameChat = new ListView<>();
+		gameChat.getStyleClass().add("game-chat-list");
+		gameChat.setPrefHeight(260);
+
 		chatInput = new TextField();
+		chatInput.setPromptText("Type a message...");
+		chatInput.getStyleClass().add("game-chat-input");
+
 		Button sendBtn = new Button("Send");
+		sendBtn.getStyleClass().addAll("game-btn", "primary-game-btn");
 		sendBtn.setOnAction(e -> sendChatMessage());
-		HBox chatControls = new HBox(5, chatInput, sendBtn);
+
+		HBox chatControls = new HBox(8, chatInput, sendBtn);
+		chatControls.setAlignment(Pos.CENTER);
+		HBox.setHgrow(chatInput, Priority.ALWAYS);
 
 		Button drawBtn = new Button("Offer Draw");
+		drawBtn.getStyleClass().addAll("game-btn", "secondary-game-btn");
+		drawBtn.setMaxWidth(Double.MAX_VALUE);
 		drawBtn.setOnAction(e -> {
 			Message req = new Message();
 			req.type = Message.MessageType.OFFER_DRAW;
@@ -404,6 +456,8 @@ public class GuiClient extends Application {
 		});
 
 		Button quitBtn = new Button("Quit Game");
+		quitBtn.getStyleClass().addAll("game-btn", "danger-game-btn");
+		quitBtn.setMaxWidth(Double.MAX_VALUE);
 		quitBtn.setOnAction(e -> {
 			Message req = new Message();
 			req.type = Message.MessageType.QUIT;
@@ -414,7 +468,8 @@ public class GuiClient extends Application {
 		});
 
 		hintBtn = new Button("Give Me a Hint");
-		hintBtn.setStyle("-fx-background-color: lightgreen;");
+		hintBtn.getStyleClass().addAll("game-btn", "hint-game-btn");
+		hintBtn.setMaxWidth(Double.MAX_VALUE);
 		hintBtn.setOnAction(e -> {
 			Message req = new Message();
 			req.type = Message.MessageType.REQUEST_HINT;
@@ -422,33 +477,43 @@ public class GuiClient extends Application {
 			clientConnection.send(req);
 		});
 
-		rightMenu.getChildren().addAll(new Label("Text Messaging"), gameChat, chatControls, drawBtn, quitBtn, hintBtn);
+		rightMenu.getChildren().addAll(
+				chatTitle,
+				gameChat,
+				chatControls,
+				drawBtn,
+				quitBtn,
+				hintBtn
+		);
+
 		gameLayout.setRight(rightMenu);
 
-		return new Scene(gameLayout, 700, 550);
+		Scene scene = new Scene(gameLayout, 980, 680);
+		scene.getStylesheets().add(getClass().getResource("/game.css").toExternalForm());
+		return scene;
 	}
 
 	// --- SCENE 4: GAME OVER SCREEN ---
 	private Scene createGameOverGui(Stage stage) {
 		VBox gameOverBox = new VBox(20);
+		gameOverBox.getStyleClass().add("gameover-root");
 		gameOverBox.setAlignment(Pos.CENTER);
 		gameOverBox.setPadding(new Insets(30));
-		gameOverBox.setStyle("-fx-background-color: cyan;");
 
 		Label title = new Label("GAME OVER");
-		title.setStyle("-fx-font-size: 36px; -fx-font-weight: bold;");
+		title.getStyleClass().add("gameover-title");
 
 		gameOverResultLabel = new Label("Result: ");
-		gameOverResultLabel.setStyle("-fx-font-size: 24px;");
+		gameOverResultLabel.getStyleClass().add("gameover-result");
 
 		gameOverOpponentLabel = new Label("Opponent: ");
-		gameOverOpponentLabel.setStyle("-fx-font-size: 18px;");
+		gameOverOpponentLabel.getStyleClass().add("gameover-opponent");
 
 		playAgainBtn = new Button("Play Again");
-		playAgainBtn.setStyle("-fx-font-size: 16px;");
+		playAgainBtn.getStyleClass().addAll("game-btn", "primary-game-btn");
 
 		quitMatchBtn = new Button("Return to Lobby");
-		quitMatchBtn.setStyle("-fx-font-size: 16px;");
+		quitMatchBtn.getStyleClass().addAll("game-btn", "secondary-game-btn");
 
 		playAgainBtn.setOnAction(e -> {
 			Message req = new Message();
@@ -456,7 +521,7 @@ public class GuiClient extends Application {
 			req.sender = username;
 			clientConnection.send(req);
 
-			playAgainBtn.setText("Waiting for opponent...");
+			playAgainBtn.setText("Waiting...");
 			playAgainBtn.setDisable(true);
 		});
 
@@ -465,12 +530,22 @@ public class GuiClient extends Application {
 			req.type = Message.MessageType.QUIT;
 			req.sender = username;
 			clientConnection.send(req);
+
 			stage.setScene(waitingScene);
 			stage.setTitle("Checkers - Waiting Room (" + username + ")");
 		});
 
-		gameOverBox.getChildren().addAll(title, gameOverResultLabel, gameOverOpponentLabel, playAgainBtn, quitMatchBtn);
-		return new Scene(gameOverBox, 500, 400);
+		gameOverBox.getChildren().addAll(
+				title,
+				gameOverResultLabel,
+				gameOverOpponentLabel,
+				playAgainBtn,
+				quitMatchBtn
+		);
+
+		Scene scene = new Scene(gameOverBox, 500, 400);
+		scene.getStylesheets().add(getClass().getResource("/game.css").toExternalForm());
+		return scene;
 	}
 
 	// --- CLIENT GAME LOGIC ---
@@ -478,9 +553,14 @@ public class GuiClient extends Application {
 		for (int row = 0; row < 8; row++) {
 			for (int col = 0; col < 8; col++) {
 				boardSquares[row][col].getChildren().clear();
+				resetSquareStyle(row, col);
+
 				if ((row + col) % 2 != 0) {
-					if (row < 3) addPieceToSquare(row, col, Color.BLACK);
-					else if (row > 4) addPieceToSquare(row, col, Color.RED);
+					if (row < 3) {
+						addPieceToSquare(row, col, Color.BLACK);
+					} else if (row > 4) {
+						addPieceToSquare(row, col, Color.RED);
+					}
 				}
 			}
 		}
@@ -488,18 +568,48 @@ public class GuiClient extends Application {
 	}
 
 	private void addPieceToSquare(int row, int col, Color color) {
-		Circle piece = new Circle(20, color);
-		piece.setStroke(Color.BLACK);
-		piece.setStrokeWidth(2);
-		boardSquares[row][col].getChildren().add(piece);
+		StackPane pieceHolder = new StackPane();
+
+		Circle outer = new Circle(20);
+		Circle inner = new Circle(13);
+
+		if (color == Color.RED) {
+			outer.getStyleClass().add("game-red-piece");
+			inner.getStyleClass().add("game-red-piece-inner");
+		} else {
+			outer.getStyleClass().add("game-black-piece");
+			inner.getStyleClass().add("game-black-piece-inner");
+		}
+
+		pieceHolder.getChildren().addAll(outer, inner);
+		boardSquares[row][col].getChildren().add(pieceHolder);
+	}
+
+	private void resetSquareStyle(int row, int col) {
+		StackPane square = boardSquares[row][col];
+		square.getStyleClass().removeAll("selected-square", "valid-square", "hint-square");
+
+		if ((row + col) % 2 == 0) {
+			square.getStyleClass().remove("dark-square");
+			if (!square.getStyleClass().contains("light-square")) {
+				square.getStyleClass().add("light-square");
+			}
+		} else {
+			square.getStyleClass().remove("light-square");
+			if (!square.getStyleClass().contains("dark-square")) {
+				square.getStyleClass().add("dark-square");
+			}
+		}
+
+		if (!square.getStyleClass().contains("square-hover")) {
+			square.getStyleClass().add("square-hover");
+		}
 	}
 
 	private void clearHighlights() {
 		for (int r = 0; r < 8; r++) {
 			for (int c = 0; c < 8; c++) {
-				boardSquares[r][c].setStyle(((r + c) % 2 == 0)
-						? "-fx-background-color: #ffce9e;"
-						: "-fx-background-color: #d18b47;");
+				resetSquareStyle(r, c);
 			}
 		}
 	}
@@ -522,12 +632,12 @@ public class GuiClient extends Application {
 			for (String startKey : currentValidMoves.keySet()) {
 				int sr = Integer.parseInt(startKey.split(",")[0]);
 				int sc = Integer.parseInt(startKey.split(",")[1]);
-				boardSquares[sr][sc].setStyle("-fx-background-color: yellow; -fx-border-color: red; -fx-border-width: 2;");
+				boardSquares[sr][sc].getStyleClass().add("selected-square");
 
 				for (String dest : currentValidMoves.get(startKey)) {
 					int er = Integer.parseInt(dest.split(",")[0]);
 					int ec = Integer.parseInt(dest.split(",")[1]);
-					boardSquares[er][ec].setStyle("-fx-background-color: lightgreen; -fx-border-color: green; -fx-border-width: 2;");
+					boardSquares[er][ec].getStyleClass().add("valid-square");
 				}
 			}
 		}
@@ -538,16 +648,18 @@ public class GuiClient extends Application {
 
 		if (selectedRow == -1 && selectedCol == -1) {
 			String key = row + "," + col;
+
 			if (currentValidMoves.containsKey(key)) {
 				selectedRow = row;
 				selectedCol = col;
 
-				boardSquares[row][col].setStyle("-fx-background-color: yellow; -fx-border-color: red; -fx-border-width: 2;");
+				boardSquares[row][col].getStyleClass().add("selected-square");
+
 				for (String dest : currentValidMoves.get(key)) {
 					String[] parts = dest.split(",");
 					int dRow = Integer.parseInt(parts[0]);
 					int dCol = Integer.parseInt(parts[1]);
-					boardSquares[dRow][dCol].setStyle("-fx-background-color: lightgreen; -fx-border-color: green; -fx-border-width: 2;");
+					boardSquares[dRow][dCol].getStyleClass().add("valid-square");
 				}
 			} else {
 				autoHighlightJumps();
@@ -568,6 +680,7 @@ public class GuiClient extends Application {
 			} else {
 				autoHighlightJumps();
 			}
+
 			selectedRow = -1;
 			selectedCol = -1;
 		}
@@ -702,16 +815,19 @@ public class GuiClient extends Application {
 				turnIndicator.setText("Whose Turn: " + payload[0]);
 
 				if (payload.length > 1 && payload[1].equals("true")) {
-					Circle promotedPiece = (Circle) boardSquares[msg.endRow][msg.endCol].getChildren().get(0);
-					promotedPiece.setStroke(Color.GOLD);
-					promotedPiece.setStrokeWidth(4);
+					if (!boardSquares[msg.endRow][msg.endCol].getChildren().isEmpty()) {
+						StackPane promotedHolder = (StackPane) boardSquares[msg.endRow][msg.endCol].getChildren().get(0);
+						Label crown = new Label("♛");
+						crown.getStyleClass().add("king-crown");
+						promotedHolder.getChildren().add(crown);
+					}
 				}
 				break;
 
 			case HINT_RESPONSE:
 				clearHighlights();
-				boardSquares[msg.startRow][msg.startCol].setStyle("-fx-background-color: cyan; -fx-border-color: blue; -fx-border-width: 2;");
-				boardSquares[msg.endRow][msg.endCol].setStyle("-fx-background-color: cyan; -fx-border-color: blue; -fx-border-width: 2;");
+				boardSquares[msg.startRow][msg.startCol].getStyleClass().add("hint-square");
+				boardSquares[msg.endRow][msg.endCol].getStyleClass().add("hint-square");
 				break;
 
 			case OFFER_DRAW:
