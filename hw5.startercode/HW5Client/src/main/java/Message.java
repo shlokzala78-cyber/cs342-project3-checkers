@@ -11,6 +11,7 @@ public class Message implements Serializable {
         CONNECT_FAIL,       // Server rejects username
         CLIENT_LIST,        // Server updates waiting room list
         REMATCH_REQUEST,    // A player clicked "Play Again"
+        REMATCH_PENDING,
         REMATCH_REJECTED,   // A player clicked "Quit" or disconnected
         PLAY_AI,            // Request to play against the computer
         SET_DIFFICULTY,
@@ -30,7 +31,10 @@ public class Message implements Serializable {
         ADD_FRIEND,
         FRIEND_REQUEST,
         FRIEND_ACCEPTED,
-        FRIEND_DECLINED
+        FRIEND_DECLINED,
+        CHALLENGE_REQUEST,
+        CHALLENGE_ACCEPTED,
+        CHALLENGE_REJECTED
     }
 
     public MessageType type;

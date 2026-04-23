@@ -28,18 +28,39 @@ public class Server {
 		callback = call;
 		server = new TheServer();
 		server.start();
+
+		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+			System.out.println("Shutting down server...");
+			server.shutdown();
+		}));
 	}
 
 	public class TheServer extends Thread {
+		private ServerSocket mysocket;
+
 		public void run() {
-			try (ServerSocket mysocket = new ServerSocket(5555)) {
+			try {
+				mysocket = new ServerSocket(5555);
 				callback.accept("Server is waiting for clients on port 5555...");
-				while (true) {
+
+				while (!mysocket.isClosed()) {
 					ClientThread c = new ClientThread(mysocket.accept(), count);
 					c.start();
 					count++;
 				}
-			} catch (Exception e) {}
+			} catch (Exception e) {
+				System.out.println("Server stopped.");
+			}
+		}
+
+		public void shutdown() {
+			try {
+				if (mysocket != null && !mysocket.isClosed()) {
+					mysocket.close();
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 		}
 	}
 
@@ -139,6 +160,11 @@ public class Server {
 			} catch (Exception e) {}
 
 			callback.accept("Match Started: " + redPlayer.username + " (Red) vs " + startMsgRed.sender + " (Black)");
+
+			// ADD THIS
+			if (isAI && !redTurn && !isGameOver) {
+				triggerAITurn();
+			}
 		}
 
 		public synchronized void handleSetDifficulty(String diff) {
@@ -287,10 +313,15 @@ public class Server {
 		}
 
 		public synchronized void handleRematchRequest(ClientThread sender) {
-			if (sender == redPlayer) redWantsRematch = true;
-			else if (sender == blackPlayer) blackWantsRematch = true;
+			if (sender == redPlayer) {
+				redWantsRematch = true;
+			} else if (sender == blackPlayer) {
+				blackWantsRematch = true;
+			}
 
-			if (isAI && redWantsRematch) blackWantsRematch = true;
+			if (isAI && redWantsRematch) {
+				blackWantsRematch = true;
+			}
 
 			if (redWantsRematch && blackWantsRematch) {
 				isGameOver = false;
@@ -298,10 +329,26 @@ public class Server {
 				blackWantsRematch = false;
 				redTurn = false;
 
-				callback.accept("Rematch started between " + redPlayer.username + " and " + (isAI ? "Computer (AI)" : blackPlayer.username));
+				callback.accept("Rematch started between " + redPlayer.username + " and "
+						+ (isAI ? "Computer (AI)" : blackPlayer.username));
 
 				setupBoard();
 				startGame();
+				return;
+			}
+
+			if (!isAI) {
+				ClientThread opponent = (sender == redPlayer) ? blackPlayer : redPlayer;
+
+				Message pendingMsg = new Message();
+				pendingMsg.type = Message.MessageType.REMATCH_PENDING;
+				pendingMsg.sender = sender.username;
+
+				try {
+					opponent.out.writeObject(pendingMsg);
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
 			}
 		}
 
@@ -517,12 +564,46 @@ public class Server {
 
 						case CHALLENGE:
 							if (clients.containsKey(data.recipient) && !activeGames.containsKey(data.recipient)) {
-								callback.accept(this.username + " challenged " + data.recipient + " to a match.");
-								GameSession newGame = new GameSession(this, clients.get(data.recipient));
-								activeGames.put(this.username, newGame);
+								callback.accept(this.username + " challenged " + data.recipient);
+
+								Message req = new Message();
+								req.type = Message.MessageType.CHALLENGE_REQUEST;
+								req.sender = this.username;
+
+								try {
+									clients.get(data.recipient).out.writeObject(req);
+								} catch (Exception e) {}
+							}
+							break;
+
+						case CHALLENGE_ACCEPTED:
+							if (clients.containsKey(data.recipient)) {
+								callback.accept(this.username + " accepted challenge from " + data.recipient);
+
+								GameSession newGame = new GameSession(
+										clients.get(data.recipient),
+										this
+								);
+
 								activeGames.put(data.recipient, newGame);
+								activeGames.put(this.username, newGame);
+
 								newGame.startGame();
 								broadcastClientList();
+							}
+							break;
+
+						case CHALLENGE_REJECTED:
+							if (clients.containsKey(data.recipient)) {
+								callback.accept(this.username + " rejected challenge from " + data.recipient);
+
+								Message rejectMsg = new Message();
+								rejectMsg.type = Message.MessageType.CHALLENGE_REJECTED;
+								rejectMsg.sender = this.username;
+
+								try {
+									clients.get(data.recipient).out.writeObject(rejectMsg);
+								} catch (Exception e) {}
 							}
 							break;
 
@@ -554,8 +635,13 @@ public class Server {
 
 						case PLAY_AI:
 							if (!activeGames.containsKey(this.username)) {
-								callback.accept(this.username + " started a match against the AI.");
-								GameSession newGame = new GameSession(this, null, true, "Medium");
+								String diff = (data.difficulty == null || data.difficulty.isBlank())
+										? "Medium"
+										: data.difficulty;
+
+								callback.accept(this.username + " started a match against the AI. Difficulty: " + diff);
+
+								GameSession newGame = new GameSession(this, null, true, diff);
 								activeGames.put(this.username, newGame);
 								newGame.startGame();
 								broadcastClientList();
