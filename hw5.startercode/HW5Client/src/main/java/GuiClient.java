@@ -13,7 +13,6 @@ import javafx.stage.Stage;
 import java.util.ArrayList;
 
 
-
 public class GuiClient extends Application {
 	Client clientConnection;
 	String username;
@@ -31,6 +30,7 @@ public class GuiClient extends Application {
 	ListView<String> usersList;
 	ListView<String> friendsList;
 	Label statsLabel;
+	VBox friendRequestsBox; // --- NEW: Holds incoming friend requests ---
 
 	GridPane checkerBoard;
 	ListView<String> gameChat;
@@ -103,13 +103,11 @@ public class GuiClient extends Application {
 		loginStatus = new Label("Status: Disconnected");
 
 		connectBtn.setOnAction(e -> {
-			// Establish network connection only when requested
 			clientConnection = new Client(data -> {
 				Platform.runLater(() -> handleIncomingMessage(data, stage));
 			});
 			clientConnection.start();
 
-			// Wait a brief moment for the socket to establish before sending the connect message
 			new Thread(() -> {
 				try { Thread.sleep(200); } catch (Exception ex) {}
 				Platform.runLater(() -> {
@@ -147,7 +145,6 @@ public class GuiClient extends Application {
 			req.sender = username;
 			clientConnection.send(req);
 
-			// Kill connection and reset UI
 			try { clientConnection.socketClient.close(); } catch(Exception ex) {}
 			stage.setScene(loginScene);
 			stage.setTitle("Checkers - Login");
@@ -157,11 +154,15 @@ public class GuiClient extends Application {
 
 		// Center: Lobby Lists
 		HBox listsBox = new HBox(20);
+		listsBox.setAlignment(Pos.CENTER);
 
+		// 1. Global Lobby Column
 		VBox globalLobby = new VBox(5);
 		globalLobby.getChildren().add(new Label("Global Lobby:"));
 		usersList = new ListView<>();
-		Button challengeBtn = new Button("Challenge Selected Player");
+		usersList.setPrefWidth(180);
+		Button challengeBtn = new Button("Challenge Player");
+		challengeBtn.setMaxWidth(Double.MAX_VALUE);
 		challengeBtn.setOnAction(e -> {
 			String selected = usersList.getSelectionModel().getSelectedItem();
 			if (selected != null) {
@@ -173,6 +174,7 @@ public class GuiClient extends Application {
 			}
 		});
 		Button addFriendBtn = new Button("Add as Friend");
+		addFriendBtn.setMaxWidth(Double.MAX_VALUE);
 		addFriendBtn.setOnAction(e -> {
 			String selected = usersList.getSelectionModel().getSelectedItem();
 			if (selected != null) {
@@ -185,10 +187,13 @@ public class GuiClient extends Application {
 		});
 		globalLobby.getChildren().addAll(usersList, challengeBtn, addFriendBtn);
 
+		// 2. Online Friends Column
 		VBox friendLobby = new VBox(5);
 		friendLobby.getChildren().add(new Label("Online Friends:"));
 		friendsList = new ListView<>();
+		friendsList.setPrefWidth(180);
 		Button challengeFriendBtn = new Button("Challenge Friend");
+		challengeFriendBtn.setMaxWidth(Double.MAX_VALUE);
 		challengeFriendBtn.setOnAction(e -> {
 			String selected = friendsList.getSelectionModel().getSelectedItem();
 			if (selected != null) {
@@ -201,7 +206,24 @@ public class GuiClient extends Application {
 		});
 		friendLobby.getChildren().addAll(friendsList, challengeFriendBtn);
 
-		listsBox.getChildren().addAll(globalLobby, friendLobby);
+		// 3. --- NEW: Friend Requests Column ---
+		VBox requestsLobby = new VBox(5);
+		requestsLobby.setPrefWidth(180);
+		requestsLobby.getChildren().add(new Label("Friend Requests:"));
+
+		ScrollPane requestScroll = new ScrollPane();
+		requestScroll.setFitToWidth(true);
+		requestScroll.setPrefHeight(200); // Matches the visual height of the ListViews
+
+		friendRequestsBox = new VBox(10);
+		friendRequestsBox.setPadding(new Insets(5));
+		friendRequestsBox.setStyle("-fx-background-color: white;");
+
+		requestScroll.setContent(friendRequestsBox);
+		requestsLobby.getChildren().add(requestScroll);
+
+		// Add all 3 columns to the center
+		listsBox.getChildren().addAll(globalLobby, friendLobby, requestsLobby);
 		waitingLayout.setCenter(listsBox);
 
 		// Bottom: AI Matchmaking
@@ -219,7 +241,8 @@ public class GuiClient extends Application {
 		botBox.getChildren().addAll(new Label("--- OR ---"), aiBtn);
 		waitingLayout.setBottom(botBox);
 
-		return new Scene(waitingLayout, 600, 500);
+		// Increased the width to 750 to comfortably fit all 3 columns
+		return new Scene(waitingLayout, 750, 500);
 	}
 
 	// --- SCENE 3: GAMEBOARD SCREEN ---
@@ -500,18 +523,44 @@ public class GuiClient extends Application {
 				statsLabel.setText("Wins: " + msg.wins + " | Losses: " + msg.losses);
 				break;
 
+			// --- NEW: In-UI Friend Requests ---
 			case FRIEND_REQUEST:
-				Alert friendAlert = new Alert(Alert.AlertType.CONFIRMATION, msg.sender + " wants to be your friend!", ButtonType.YES, ButtonType.NO);
-				friendAlert.showAndWait().ifPresent(response -> {
+				HBox requestEntry = new HBox(5);
+				requestEntry.setAlignment(Pos.CENTER_LEFT);
+
+				Label reqLabel = new Label(msg.sender);
+				reqLabel.setPrefWidth(90); // Keep it neat so buttons align
+
+				Button acceptBtn = new Button("✓");
+				acceptBtn.setStyle("-fx-background-color: lightgreen; -fx-padding: 2 5; -fx-font-weight: bold;");
+
+				Button declineBtn = new Button("✗");
+				declineBtn.setStyle("-fx-background-color: #ff6666; -fx-padding: 2 5; -fx-font-weight: bold;");
+
+				acceptBtn.setOnAction(e -> {
 					Message res = new Message();
 					res.sender = username;
 					res.recipient = msg.sender;
-					res.type = (response == ButtonType.YES) ? Message.MessageType.FRIEND_ACCEPTED : Message.MessageType.FRIEND_DECLINED;
+					res.type = Message.MessageType.FRIEND_ACCEPTED;
 					clientConnection.send(res);
+					friendRequestsBox.getChildren().remove(requestEntry);
 				});
+
+				declineBtn.setOnAction(e -> {
+					Message res = new Message();
+					res.sender = username;
+					res.recipient = msg.sender;
+					res.type = Message.MessageType.FRIEND_DECLINED;
+					clientConnection.send(res);
+					friendRequestsBox.getChildren().remove(requestEntry);
+				});
+
+				requestEntry.getChildren().addAll(reqLabel, acceptBtn, declineBtn);
+				friendRequestsBox.getChildren().add(requestEntry);
 				break;
 
 			case FRIEND_DECLINED:
+				// We'll leave this as a small info alert, since it only pops for the sender
 				new Alert(Alert.AlertType.INFORMATION, msg.sender + " declined your friend request.").showAndWait();
 				break;
 
