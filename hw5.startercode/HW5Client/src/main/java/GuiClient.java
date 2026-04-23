@@ -6,39 +6,36 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.control.ListView;
-import javafx.scene.control.TextField;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import java.util.ArrayList;
+
+
 
 public class GuiClient extends Application {
 	Client clientConnection;
 	String username;
 
-	// Scenes
 	Scene loginScene;
 	Scene waitingScene;
 	Scene gameScene;
 	Scene gameOverScene;
 
-	// UI Elements
 	TextField ipInput;
 	TextField usernameInput;
 	Label loginStatus;
-	ListView<String> usersList;
 
-	// Game Specific UI Elements
+	// Waiting Room UI Elements
+	ListView<String> usersList;
+	ListView<String> friendsList;
+	Label statsLabel;
+
 	GridPane checkerBoard;
 	ListView<String> gameChat;
 	TextField chatInput;
 	Label turnIndicator;
-	Label capturedInfo;
 	Label playerInfoLabel;
 
 	Label gameOverResultLabel;
@@ -53,7 +50,6 @@ public class GuiClient extends Application {
 	Button hardBtn;
 	Button hintBtn;
 
-	// Board State
 	private StackPane[][] boardSquares = new StackPane[8][8];
 	private int selectedRow = -1;
 	private int selectedCol = -1;
@@ -67,15 +63,10 @@ public class GuiClient extends Application {
 
 	@Override
 	public void start(Stage primaryStage) throws Exception {
-		clientConnection = new Client(data -> {
-			Platform.runLater(() -> handleIncomingMessage(data, primaryStage));
-		});
-		clientConnection.start();
-
-		loginScene = createLoginGui();
-		waitingScene = createWaitingGui();
-		gameScene = createGameGui();
-		gameOverScene = createGameOverGui(); // Initialize the new scene
+		loginScene = createLoginGui(primaryStage);
+		waitingScene = createWaitingGui(primaryStage);
+		gameScene = createGameGui(primaryStage);
+		gameOverScene = createGameOverGui(primaryStage);
 
 		primaryStage.setOnCloseRequest(t -> {
 			Platform.exit();
@@ -88,7 +79,7 @@ public class GuiClient extends Application {
 	}
 
 	// --- SCENE 1: LOGIN SCREEN ---
-	private Scene createLoginGui() {
+	private Scene createLoginGui(Stage stage) {
 		VBox loginBox = new VBox(15);
 		loginBox.setAlignment(Pos.CENTER);
 		loginBox.setPadding(new Insets(20));
@@ -112,10 +103,22 @@ public class GuiClient extends Application {
 		loginStatus = new Label("Status: Disconnected");
 
 		connectBtn.setOnAction(e -> {
-			Message req = new Message();
-			req.type = Message.MessageType.CONNECT;
-			req.sender = usernameInput.getText();
-			clientConnection.send(req);
+			// Establish network connection only when requested
+			clientConnection = new Client(data -> {
+				Platform.runLater(() -> handleIncomingMessage(data, stage));
+			});
+			clientConnection.start();
+
+			// Wait a brief moment for the socket to establish before sending the connect message
+			new Thread(() -> {
+				try { Thread.sleep(200); } catch (Exception ex) {}
+				Platform.runLater(() -> {
+					Message req = new Message();
+					req.type = Message.MessageType.CONNECT;
+					req.sender = usernameInput.getText();
+					clientConnection.send(req);
+				});
+			}).start();
 		});
 
 		loginBox.getChildren().addAll(title, new Label("Server IP Address:"), ipInput, new Label("Username:"), usernameInput, connectBtn, guestBtn, loginStatus);
@@ -125,13 +128,39 @@ public class GuiClient extends Application {
 	}
 
 	// --- SCENE 2: WAITING / MATCHMAKING SCREEN ---
-	private Scene createWaitingGui() {
-		VBox waitingBox = new VBox(10);
-		waitingBox.setPadding(new Insets(20));
+	private Scene createWaitingGui(Stage stage) {
+		BorderPane waitingLayout = new BorderPane();
+		waitingLayout.setPadding(new Insets(20));
+		waitingLayout.setStyle("-fx-background-color: cyan;");
 
-		Label welcomeLabel = new Label("Online Players:");
+		// Top: Stats & Logout
+		VBox topBox = new VBox(10);
+		topBox.setAlignment(Pos.CENTER);
+		statsLabel = new Label("Wins: 0 | Losses: 0");
+		statsLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold;");
+
+		Button logoutBtn = new Button("Back to Login");
+		logoutBtn.setStyle("-fx-background-color: #ff6666;");
+		logoutBtn.setOnAction(e -> {
+			Message req = new Message();
+			req.type = Message.MessageType.LOGOUT;
+			req.sender = username;
+			clientConnection.send(req);
+
+			// Kill connection and reset UI
+			try { clientConnection.socketClient.close(); } catch(Exception ex) {}
+			stage.setScene(loginScene);
+			stage.setTitle("Checkers - Login");
+		});
+		topBox.getChildren().addAll(statsLabel, logoutBtn);
+		waitingLayout.setTop(topBox);
+
+		// Center: Lobby Lists
+		HBox listsBox = new HBox(20);
+
+		VBox globalLobby = new VBox(5);
+		globalLobby.getChildren().add(new Label("Global Lobby:"));
 		usersList = new ListView<>();
-
 		Button challengeBtn = new Button("Challenge Selected Player");
 		challengeBtn.setOnAction(e -> {
 			String selected = usersList.getSelectionModel().getSelectedItem();
@@ -143,8 +172,43 @@ public class GuiClient extends Application {
 				clientConnection.send(req);
 			}
 		});
+		Button addFriendBtn = new Button("Add as Friend");
+		addFriendBtn.setOnAction(e -> {
+			String selected = usersList.getSelectionModel().getSelectedItem();
+			if (selected != null) {
+				Message req = new Message();
+				req.type = Message.MessageType.ADD_FRIEND;
+				req.sender = username;
+				req.recipient = selected;
+				clientConnection.send(req);
+			}
+		});
+		globalLobby.getChildren().addAll(usersList, challengeBtn, addFriendBtn);
 
-		Button aiBtn = new Button("Play Single Player");
+		VBox friendLobby = new VBox(5);
+		friendLobby.getChildren().add(new Label("Online Friends:"));
+		friendsList = new ListView<>();
+		Button challengeFriendBtn = new Button("Challenge Friend");
+		challengeFriendBtn.setOnAction(e -> {
+			String selected = friendsList.getSelectionModel().getSelectedItem();
+			if (selected != null) {
+				Message req = new Message();
+				req.type = Message.MessageType.CHALLENGE;
+				req.sender = username;
+				req.recipient = selected;
+				clientConnection.send(req);
+			}
+		});
+		friendLobby.getChildren().addAll(friendsList, challengeFriendBtn);
+
+		listsBox.getChildren().addAll(globalLobby, friendLobby);
+		waitingLayout.setCenter(listsBox);
+
+		// Bottom: AI Matchmaking
+		VBox botBox = new VBox(5);
+		botBox.setAlignment(Pos.CENTER);
+		botBox.setPadding(new Insets(10, 0, 0, 0));
+		Button aiBtn = new Button("Play Single Player vs AI");
 		aiBtn.setStyle("-fx-background-color: gold; -fx-font-weight: bold;");
 		aiBtn.setOnAction(e -> {
 			Message req = new Message();
@@ -152,20 +216,18 @@ public class GuiClient extends Application {
 			req.sender = username;
 			clientConnection.send(req);
 		});
+		botBox.getChildren().addAll(new Label("--- OR ---"), aiBtn);
+		waitingLayout.setBottom(botBox);
 
-		waitingBox.getChildren().addAll(welcomeLabel, usersList, challengeBtn, new Label("--- OR ---"), aiBtn);
-		waitingBox.setStyle("-fx-background-color: cyan;");
-
-		return new Scene(waitingBox, 400, 400);
+		return new Scene(waitingLayout, 600, 500);
 	}
 
 	// --- SCENE 3: GAMEBOARD SCREEN ---
-	private Scene createGameGui() {
+	private Scene createGameGui(Stage stage) {
 		BorderPane gameLayout = new BorderPane();
 		gameLayout.setPadding(new Insets(10));
 		gameLayout.setStyle("-fx-background-color: cyan;");
 
-		// Top Info
 		VBox topBox = new VBox(5);
 		playerInfoLabel = new Label("You are: Waiting...");
 		playerInfoLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: darkblue;");
@@ -174,14 +236,11 @@ public class GuiClient extends Application {
 		topBox.getChildren().addAll(playerInfoLabel, turnIndicator);
 		gameLayout.setTop(topBox);
 
-		// Left Menu (AI)
 		leftMenu = new VBox(10);
 		leftMenu.setPadding(new Insets(10));
 		leftMenu.setPrefWidth(120);
-
 		Label diffLabel = new Label("AI Difficulty:");
 		diffLabel.setStyle("-fx-font-weight: bold;");
-
 		easyBtn = new Button("Easy");
 		medBtn = new Button("Medium");
 		hardBtn = new Button("Hard");
@@ -196,9 +255,8 @@ public class GuiClient extends Application {
 			clientConnection.send(msg);
 
 			easyBtn.setDisable(true); medBtn.setDisable(true); hardBtn.setDisable(true);
-
 			hintBtn.setVisible(!diff.equals("Hard"));
-			turnIndicator.setText("Whose Turn: Black");
+			turnIndicator.setText("Whose Turn: Black (AI is thinking...)");
 		};
 
 		easyBtn.setOnAction(setDiff); medBtn.setOnAction(setDiff); hardBtn.setOnAction(setDiff);
@@ -206,16 +264,13 @@ public class GuiClient extends Application {
 		leftMenu.setVisible(false);
 		gameLayout.setLeft(leftMenu);
 
-		// Center Board
 		checkerBoard = new GridPane();
 		checkerBoard.setStyle("-fx-border-color: black; -fx-border-width: 2;");
 		checkerBoard.setMaxSize(400, 400);
-
 		for (int row = 0; row < 8; row++) {
 			for (int col = 0; col < 8; col++) {
 				StackPane square = new StackPane();
 				square.setPrefSize(50, 50);
-
 				if ((row + col) % 2 == 0) square.setStyle("-fx-background-color: #ffce9e;");
 				else square.setStyle("-fx-background-color: #d18b47;");
 
@@ -229,7 +284,6 @@ public class GuiClient extends Application {
 		}
 		gameLayout.setCenter(checkerBoard);
 
-		// Right Menu
 		VBox rightMenu = new VBox(10);
 		rightMenu.setPadding(new Insets(10));
 		rightMenu.setPrefWidth(200);
@@ -254,13 +308,11 @@ public class GuiClient extends Application {
 			req.type = Message.MessageType.QUIT;
 			req.sender = username;
 			clientConnection.send(req);
-
-			Stage stage = (Stage) checkerBoard.getScene().getWindow();
 			stage.setScene(waitingScene);
 			stage.setTitle("Checkers - Waiting Room (" + username + ")");
 		});
 
-		hintBtn = new Button("Hint");
+		hintBtn = new Button("Give Me a Hint");
 		hintBtn.setStyle("-fx-background-color: lightgreen;");
 		hintBtn.setOnAction(e -> {
 			Message req = new Message();
@@ -275,8 +327,8 @@ public class GuiClient extends Application {
 		return new Scene(gameLayout, 700, 550);
 	}
 
-	// --- SCENE 4: GAME OVER SCREEN (From Wireframes) ---
-	private Scene createGameOverGui() {
+	// --- SCENE 4: GAME OVER SCREEN ---
+	private Scene createGameOverGui(Stage stage) {
 		VBox gameOverBox = new VBox(20);
 		gameOverBox.setAlignment(Pos.CENTER);
 		gameOverBox.setPadding(new Insets(30));
@@ -294,7 +346,7 @@ public class GuiClient extends Application {
 		playAgainBtn = new Button("Play Again");
 		playAgainBtn.setStyle("-fx-font-size: 16px;");
 
-		quitMatchBtn = new Button("Quit Game");
+		quitMatchBtn = new Button("Return to Lobby");
 		quitMatchBtn.setStyle("-fx-font-size: 16px;");
 
 		playAgainBtn.setOnAction(e -> {
@@ -312,8 +364,6 @@ public class GuiClient extends Application {
 			req.type = Message.MessageType.QUIT;
 			req.sender = username;
 			clientConnection.send(req);
-
-			Stage stage = (Stage) gameOverBox.getScene().getWindow();
 			stage.setScene(waitingScene);
 			stage.setTitle("Checkers - Waiting Room (" + username + ")");
 		});
@@ -323,7 +373,6 @@ public class GuiClient extends Application {
 	}
 
 	// --- CLIENT GAME LOGIC ---
-
 	private void initializeBoard() {
 		for (int row = 0; row < 8; row++) {
 			for (int col = 0; col < 8; col++) {
@@ -352,11 +401,9 @@ public class GuiClient extends Application {
 		}
 	}
 
-	// --- AUTO HIGHLIGHT JUMPS LOGIC ---
 	private void autoHighlightJumps() {
 		if (currentValidMoves == null || currentValidMoves.isEmpty()) return;
 
-		// Check if the current required moves are jumps
 		boolean isJumpTurn = false;
 		for (String startKey : currentValidMoves.keySet()) {
 			String dest = currentValidMoves.get(startKey).get(0);
@@ -368,7 +415,6 @@ public class GuiClient extends Application {
 			}
 		}
 
-		// If a jump is forced, permanently highlight those specific pieces until clicked
 		if (isJumpTurn) {
 			for (String startKey : currentValidMoves.keySet()) {
 				int sr = Integer.parseInt(startKey.split(",")[0]);
@@ -384,14 +430,11 @@ public class GuiClient extends Application {
 		}
 	}
 
-	// --- CLICK LOGIC ---
 	private void handleSquareClick(int row, int col) {
 		clearHighlights();
 
-		// First click: Select a piece to move
 		if (selectedRow == -1 && selectedCol == -1) {
 			String key = row + "," + col;
-
 			if (currentValidMoves.containsKey(key)) {
 				selectedRow = row;
 				selectedCol = col;
@@ -404,11 +447,9 @@ public class GuiClient extends Application {
 					boardSquares[dRow][dCol].setStyle("-fx-background-color: lightgreen; -fx-border-color: green; -fx-border-width: 2;");
 				}
 			} else {
-				autoHighlightJumps(); // Restore jump highlights if they click empty space
+				autoHighlightJumps();
 			}
-		}
-		// Second click: Attempt a move
-		else {
+		} else {
 			String startKey = selectedRow + "," + selectedCol;
 			String targetKey = row + "," + col;
 
@@ -422,9 +463,8 @@ public class GuiClient extends Application {
 				moveMsg.endCol = col;
 				clientConnection.send(moveMsg);
 			} else {
-				autoHighlightJumps(); // Restore jump highlights if invalid destination
+				autoHighlightJumps();
 			}
-
 			selectedRow = -1;
 			selectedCol = -1;
 		}
@@ -446,8 +486,33 @@ public class GuiClient extends Application {
 			case CLIENT_LIST:
 				usersList.getItems().clear();
 				for (String u : msg.activeUsers) {
-					if (!u.equals(username)) usersList.getItems().add(u);
+					if (!u.equals(username) && !msg.onlineFriends.contains(u)) {
+						usersList.getItems().add(u);
+					}
 				}
+				friendsList.getItems().clear();
+				for (String f : msg.onlineFriends) {
+					friendsList.getItems().add(f);
+				}
+				break;
+
+			case STATS_UPDATE:
+				statsLabel.setText("Wins: " + msg.wins + " | Losses: " + msg.losses);
+				break;
+
+			case FRIEND_REQUEST:
+				Alert friendAlert = new Alert(Alert.AlertType.CONFIRMATION, msg.sender + " wants to be your friend!", ButtonType.YES, ButtonType.NO);
+				friendAlert.showAndWait().ifPresent(response -> {
+					Message res = new Message();
+					res.sender = username;
+					res.recipient = msg.sender;
+					res.type = (response == ButtonType.YES) ? Message.MessageType.FRIEND_ACCEPTED : Message.MessageType.FRIEND_DECLINED;
+					clientConnection.send(res);
+				});
+				break;
+
+			case FRIEND_DECLINED:
+				new Alert(Alert.AlertType.INFORMATION, msg.sender + " declined your friend request.").showAndWait();
 				break;
 
 			case GAME_START:
@@ -458,19 +523,17 @@ public class GuiClient extends Application {
 
 				myColor = msg.playerColor;
 				if (myColor == 1) {
-					playerInfoLabel.setText("You are: RED");
+					playerInfoLabel.setText("You are: RED (Moving UP ↑)");
 					playerInfoLabel.setTextFill(Color.RED);
 				} else {
-					playerInfoLabel.setText("You are: BLACK");
+					playerInfoLabel.setText("You are: BLACK (Moving DOWN ↓)");
 					playerInfoLabel.setTextFill(Color.BLACK);
 				}
 
 				currentValidMoves = msg.validMoves;
-				autoHighlightJumps(); // Check for immediate jumps
+				autoHighlightJumps();
 
 				hintBtn.setVisible(true);
-
-				// Reset Game Over Screen buttons for future use
 				playAgainBtn.setText("Play Again");
 				playAgainBtn.setDisable(false);
 
@@ -496,7 +559,7 @@ public class GuiClient extends Application {
 				}
 
 				currentValidMoves = msg.validMoves;
-				autoHighlightJumps(); // Automatically highlight forced jumps for the next turn
+				autoHighlightJumps();
 
 				String[] payload = msg.content.split(",");
 				turnIndicator.setText("Whose Turn: " + payload[0]);
@@ -536,7 +599,6 @@ public class GuiClient extends Application {
 				currentValidMoves.clear();
 				turnIndicator.setText("GAME OVER: " + msg.content);
 
-				// Transition to the new Dedicated Game Over Scene!
 				gameOverResultLabel.setText("Result: " + msg.content);
 				gameOverOpponentLabel.setText("Opponent: " + currentOpponent);
 				stage.setScene(gameOverScene);
