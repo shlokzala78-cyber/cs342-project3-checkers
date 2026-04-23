@@ -170,24 +170,58 @@ public class GuiClient extends Application {
 				// ignore
 			}
 
-			clientConnection = new Client(data -> {
+			String serverIp = ipInput.getText().trim();
+			String enteredUsername = usernameInput.getText().trim();
+
+			if (serverIp.isEmpty()) {
+				loginStatus.setText("Please enter the server IP address.");
+				return;
+			}
+
+			if (enteredUsername.isEmpty()) {
+				loginStatus.setText("Please enter a username.");
+				return;
+			}
+
+			loginStatus.setText("Connecting...");
+			loginView.connectBtn.setDisable(true);
+			loginView.guestBtn.setDisable(true);
+
+			clientConnection = new Client(serverIp, 5555, data -> {
 				Platform.runLater(() -> handleIncomingMessage(data, primaryStage));
 			});
 
 			clientConnection.start();
 
 			new Thread(() -> {
-				try {
-					Thread.sleep(200);
-				} catch (Exception ex) {
-					// ignore
+				int attempts = 0;
+
+				while (attempts < 50) {   // wait up to about 5 seconds
+					try {
+						Thread.sleep(100);
+					} catch (Exception ex) {
+						// ignore
+					}
+
+					if (clientConnection.out != null) {
+						Message req = new Message();
+						req.type = Message.MessageType.CONNECT;
+						req.sender = enteredUsername;
+						clientConnection.send(req);
+						return;
+					}
+
+					if (clientConnection.socketClient != null && clientConnection.socketClient.isClosed()) {
+						break;
+					}
+
+					attempts++;
 				}
 
 				Platform.runLater(() -> {
-					Message req = new Message();
-					req.type = Message.MessageType.CONNECT;
-					req.sender = usernameInput.getText();
-					clientConnection.send(req);
+					loginStatus.setText("Could not connect to server.");
+					loginView.connectBtn.setDisable(false);
+					loginView.guestBtn.setDisable(false);
 				});
 			}).start();
 		});
@@ -980,13 +1014,18 @@ public class GuiClient extends Application {
 	private void handleIncomingMessage(Message msg, Stage stage) {
 		switch (msg.type) {
 			case CONNECT_SUCCESS:
-				username = usernameInput.getText();
+				username = usernameInput.getText().trim();
+				loginStatus.setText("Connected!");
+				loginView.connectBtn.setDisable(false);
+				loginView.guestBtn.setDisable(false);
 				stage.setScene(waitingScene);
 				stage.setTitle("Checkers - Waiting Room (" + username + ")");
 				break;
 
 			case CONNECT_FAIL:
-				loginStatus.setText("Username Error: Already in use!");
+				loginStatus.setText("Username already in use!");
+				loginView.connectBtn.setDisable(false);
+				loginView.guestBtn.setDisable(false);
 				break;
 
 			case CLIENT_LIST:

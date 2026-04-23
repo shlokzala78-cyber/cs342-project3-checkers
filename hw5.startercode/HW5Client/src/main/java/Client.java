@@ -1,64 +1,55 @@
-import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import java.net.Socket;
 import java.util.function.Consumer;
 
-
 // Handles the network to the server
-public class Client extends Thread{
+public class Client extends Thread {
 
-	// Making a socket for client
 	Socket socketClient;
-
-	// Initializing input-output streams
 	ObjectOutputStream out;
 	ObjectInputStream in;
-	
+
 	private Consumer<Message> callback;
-	
-	Client(Consumer<Message> call){
-	
-		callback = call;
+	private String serverIp;
+	private int serverPort;
+
+	Client(String serverIp, int serverPort, Consumer<Message> call) {
+		this.serverIp = serverIp;
+		this.serverPort = serverPort;
+		this.callback = call;
 	}
 
-	// The main class to establish connection and execute the thread.
+	@Override
 	public void run() {
-		
 		try {
-		socketClient= new Socket("127.0.0.1",5555);
-	    out = new ObjectOutputStream(socketClient.getOutputStream());
-	    in = new ObjectInputStream(socketClient.getInputStream());
-	    socketClient.setTcpNoDelay(true);
-		}
-		catch(Exception e) {
+			socketClient = new Socket(serverIp, serverPort);
+			out = new ObjectOutputStream(socketClient.getOutputStream());
+			in = new ObjectInputStream(socketClient.getInputStream());
+			socketClient.setTcpNoDelay(true);
+		} catch (Exception e) {
 			e.printStackTrace();
+			return;
 		}
 
-		// While loop to constantly receive the data
-		while(true) {
-			 
+		while (true) {
 			try {
-			Message message = (Message) in.readObject();
-			callback.accept(message);
-			}
-			catch(Exception e) {
+				Message message = (Message) in.readObject();
+				callback.accept(message);
+			} catch (Exception e) {
 				e.printStackTrace();
 				break;
 			}
 		}
-	
-    }
+	}
 
-	// Sends a message to the server
 	public void send(Message data) {
 		try {
+			if (out == null) return;
 			out.writeObject(data);
+			out.flush();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
-
-
 }
